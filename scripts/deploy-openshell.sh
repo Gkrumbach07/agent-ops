@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# OpenShell v0.0.116 deployment for OpenShift
+# OpenShell deployment for OpenShift, pinned to the build validated on OCP 4.20:
+# upstream main @ 8719fc9 (chart 0.0.0-dev.8719fc9..., images tagged with the same commit)
 # Based on opendatahub-io/agent-ops pinned version testing
 
 set -euo pipefail
@@ -10,13 +11,15 @@ PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # Configuration with defaults
 NAMESPACE="${OPENSHELL_NAMESPACE:-openshell}"
 GATEWAY_NAME="${OPENSHELL_GATEWAY_NAME:-openshift}"
-HELM_VERSION="${OPENSHELL_HELM_VERSION:-0.0.116}"
-ODH_IMAGE_TAG="${ODH_IMAGE_TAG:-v0.0.116-rhaiv.0}"
-GATEWAY_IMAGE_REPOSITORY="${OPENSHELL_GATEWAY_IMAGE_REPOSITORY:-quay.io/opendatahub/odh-openshell-gateway}"
-GATEWAY_IMAGE_TAG="${OPENSHELL_GATEWAY_IMAGE_TAG:-${ODH_IMAGE_TAG}}"
-SUPERVISOR_IMAGE_REPOSITORY="${OPENSHELL_SUPERVISOR_IMAGE_REPOSITORY:-quay.io/opendatahub/odh-openshell-supervisor}"
-SUPERVISOR_IMAGE_TAG="${OPENSHELL_SUPERVISOR_IMAGE_TAG:-${ODH_IMAGE_TAG}}"
-SCC_NAME="${OPENSHELL_SCC:-openshell-sandbox-minimum-required}"
+# The dev chart's appVersion is the commit, so it pulls ghcr.io/nvidia/openshell/{gateway,supervisor,sandbox}
+# images tagged with that same commit. No image overrides are needed for the tested build.
+HELM_VERSION="${OPENSHELL_HELM_VERSION:-0.0.0-dev.8719fc9f37a93dd96435cf6753ae53c8ee8809e6}"
+# Optional: Red Hat (ODH) builds exist only for tagged releases. To use one, set both
+# ODH_IMAGE_TAG (e.g. v0.1.2-rhaiv.3) and the matching OPENSHELL_HELM_VERSION (e.g. 0.1.2).
+ODH_IMAGE_TAG="${ODH_IMAGE_TAG:-}"
+ODH_IMAGE_REGISTRY="${ODH_IMAGE_REGISTRY:-quay.io/opendatahub}"
+# Set to true to mount the SPIFFE Workload API (ZTWIM) for dynamic provider token grants.
+ENABLE_SPIFFE="${OPENSHELL_ENABLE_SPIFFE:-false}"
 
 # Validate inputs to prevent injection attacks
 if [[ ! "$NAMESPACE" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
@@ -44,8 +47,8 @@ if [[ ! "$GATEWAY_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
     exit 1
 fi
 
-if [[ ! "$HELM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "ERROR: Invalid Helm version. Must be in semver format (e.g., 0.0.116)." >&2
+if [[ ! "$HELM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    echo "ERROR: Invalid Helm version. Must be semver, optionally with a pre-release (e.g., 0.0.0-dev.<commit>)." >&2
     exit 1
 fi
 
@@ -143,18 +146,9 @@ setup_namespace() {
     oc create namespace "${NAMESPACE}" --dry-run=client -o yaml | oc apply -f -
     log_info "Namespace ${NAMESPACE} created/verified"
 
-    # Add SCC permissions for OpenShift
-    log_info "Adding SCC permissions for OpenShift..."
-
-    # Check if specified SCC exists
-    if oc get scc "${SCC_NAME}" &> /dev/null; then
-        log_info "Using SCC: ${SCC_NAME}"
-        oc adm policy add-scc-to-user "${SCC_NAME}" -z openshell-sandbox -n "${NAMESPACE}" 2>/dev/null || true
-    else
-        log_warn "SCC '${SCC_NAME}' not found, using privileged SCC"
-        log_warn "Set OPENSHELL_SCC environment variable to use a different SCC"
-        oc adm policy add-scc-to-user privileged -z openshell-sandbox -n "${NAMESPACE}" 2>/dev/null || true
-    fi
+    # OpenShell 0.1.x is capability-free: sandbox, supervisor, and gateway pods run
+    # under the default restricted-v2 SCC with UIDs from the namespace range. No
+    # privileged SCC grant is needed.
 
     # Add SCC for certgen job
     oc adm policy add-scc-to-user restricted-v2 -z openshell-certgen -n "${NAMESPACE}" 2>/dev/null || true
@@ -174,33 +168,42 @@ install_helm() {
     ROUTE_HOSTNAME="openshell-${NAMESPACE}.${INGRESS_DOMAIN}"
     log_info "Route hostname for certificate SANs: ${ROUTE_HOSTNAME}"
 
-    # Check if already installed
+    local helm_args=(
+        --version "${HELM_VERSION}"
+        --namespace "${NAMESPACE}"
+        --set podSecurityContext.fsGroup=null
+        --set securityContext.runAsUser=null
+        --set server.auth.allowUnauthenticatedUsers=true
+        --set "pkiInitJob.serverDnsNames[0]=${ROUTE_HOSTNAME}"
+    )
+    if [[ -n "${ODH_IMAGE_TAG}" ]]; then
+        helm_args+=(
+            --set global.image.registry="${ODH_IMAGE_REGISTRY}"
+            --set global.image.tag="${ODH_IMAGE_TAG}"
+            --set gateway.image.repository=odh-openshell-gateway
+            --set supervisor.image.repository=odh-openshell-supervisor
+            --set sandboxRuntime.image.repository=odh-openshell-sandbox
+        )
+    fi
+    if [[ "${ENABLE_SPIFFE}" == "true" ]]; then
+        helm_args+=(--set server.providerTokenGrants.spiffe.enabled=true)
+    fi
+
     if helm list -n "${NAMESPACE}" | grep -q "^openshell"; then
         log_info "OpenShell already installed, upgrading..."
-        helm upgrade openshell oci://ghcr.io/nvidia/openshell/helm-chart \
-            --version "${HELM_VERSION}" \
-            --namespace "${NAMESPACE}" \
-            --set image.repository="${GATEWAY_IMAGE_REPOSITORY}" \
-            --set image.tag="${GATEWAY_IMAGE_TAG}" \
-            --set supervisor.image.repository="${SUPERVISOR_IMAGE_REPOSITORY}" \
-            --set supervisor.image.tag="${SUPERVISOR_IMAGE_TAG}" \
-            --set podSecurityContext.fsGroup=null \
-            --set securityContext.runAsUser=null \
-            --set server.auth.allowUnauthenticatedUsers=true \
-            --set "pkiInitJob.serverDnsNames[0]=${ROUTE_HOSTNAME}"
+        # Helm 4 applies server-side. scripts/token-exchange/05-deploy-registrar.sh edits the
+        # gateway ConfigMap and StatefulSet, so take back ownership; step 5 must then be re-run.
+        if helm upgrade --help 2>/dev/null | grep -q -- '--force-conflicts'; then
+            helm_args+=(--force-conflicts)
+        fi
+        helm upgrade openshell oci://ghcr.io/nvidia/openshell/helm-chart "${helm_args[@]}"
+        if oc -n "${NAMESPACE}" get deploy keycloak-registrar &> /dev/null; then
+            log_warn "Helm reset the gateway's interceptor registration."
+            log_warn "Re-run scripts/token-exchange/05-deploy-registrar.sh (make token-exchange does this)."
+        fi
     else
         log_info "Installing OpenShell ${HELM_VERSION}..."
-        helm install openshell oci://ghcr.io/nvidia/openshell/helm-chart \
-            --version "${HELM_VERSION}" \
-            --namespace "${NAMESPACE}" \
-            --set image.repository="${GATEWAY_IMAGE_REPOSITORY}" \
-            --set image.tag="${GATEWAY_IMAGE_TAG}" \
-            --set supervisor.image.repository="${SUPERVISOR_IMAGE_REPOSITORY}" \
-            --set supervisor.image.tag="${SUPERVISOR_IMAGE_TAG}" \
-            --set podSecurityContext.fsGroup=null \
-            --set securityContext.runAsUser=null \
-            --set server.auth.allowUnauthenticatedUsers=true \
-            --set "pkiInitJob.serverDnsNames[0]=${ROUTE_HOSTNAME}"
+        helm install openshell oci://ghcr.io/nvidia/openshell/helm-chart "${helm_args[@]}"
     fi
 
     log_info "OpenShell installed successfully"
@@ -304,8 +307,7 @@ display_info() {
     echo ""
     log_info "Gateway: ${GATEWAY_NAME}"
     log_info "Version: ${HELM_VERSION}"
-    log_info "Gateway image: ${GATEWAY_IMAGE_REPOSITORY}:${GATEWAY_IMAGE_TAG}"
-    log_info "Supervisor image: ${SUPERVISOR_IMAGE_REPOSITORY}:${SUPERVISOR_IMAGE_TAG}"
+    log_info "Gateway image: $(oc -n "${NAMESPACE}" get sts openshell -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null)"
     echo ""
     log_info "Check status:"
     echo "  openshell status"
@@ -317,14 +319,11 @@ display_info() {
     echo "  openshell sandbox list"
     echo ""
 
-    # Show current SCC in use
-    local current_scc="unknown"
-    if oc get scc openshell-sandbox-minimum-required &> /dev/null; then
-        current_scc="openshell-sandbox-minimum-required (custom)"
-    else
-        current_scc="privileged (default)"
-    fi
-    log_warn "Current SCC: ${current_scc}"
+    # Kernels before Linux 5.19 (all current RHCOS) run sandboxes in legacy read-only mode.
+    local kernel
+    kernel=$(oc get nodes -o jsonpath='{.items[0].status.nodeInfo.kernelVersion}' 2>/dev/null || echo unknown)
+    log_warn "Node kernel: ${kernel}. Before Linux 5.19, sandboxes run in legacy read-only mode:"
+    log_warn "  getpeername() returns EOPNOTSUPP, which breaks Python HTTPS clients. See the guide's Known Limitations."
     echo ""
 }
 

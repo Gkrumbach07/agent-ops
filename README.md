@@ -2,11 +2,77 @@
 
 Demos, guides, and getting-started material for running [OpenShell](https://docs.nvidia.com/openshell/latest/) on OpenShift.
 
+> [!IMPORTANT]
+> **Replace the images before customer or production use.** The defaults pull
+> upstream OpenShell development images and build the registrar interceptor with a
+> community builder image. Swap them for Red Hat product-built images. See
+> [Images used in this repository](#images-used-in-this-repository).
+
+## Quick start
+
+On an OpenShift cluster with the [Red Hat build of Agent Sandbox](https://docs.redhat.com/en/documentation/openshift_sandboxed_containers/1.12/html/deploying_red_hat_build_of_agent_sandbox/index) installed:
+
+```shell
+make preflight    # checks the cluster first; nothing is installed
+make cli          # OpenShell CLI
+make deploy       # gateway, Route, and CLI connection
+openshell sandbox create -- echo "hello from a sandbox"
+```
+
+Then let agents call your APIs as the user, with no credentials in the sandbox
+([guide](guides/spiffe-token-exchange-keycloak.md)):
+
+```shell
+make token-exchange   # about 4 minutes; safe to re-run
+make try-it           # a sandbox calls a protected API as user "alice"
+```
+
+Run `make help` for all targets. Each target wraps a script in `scripts/`, so you can
+also run the steps one at a time.
+
+## What was validated, and its support status
+
+Everything in the getting-started and token-exchange guides was run end to end on
+this stack. Status as of 2026-10-02.
+
+| Component | Validated | Latest available | Support status |
+|---|---|---|---|
+| OpenShift | 4.20.27 (RHCOS 9.6, kernel 5.14) | | GA |
+| OpenShell | upstream `main` at `8719fc9` (chart `0.0.0-dev.8719fc9f37a93dd96435cf6753ae53c8ee8809e6`) | release v0.1.2; Red Hat build `v0.1.2-rhaiv.3` | Developer Preview in Red Hat OpenShift AI 3.5; Technology Preview targeted for 3.6 |
+| Red Hat build of Agent Sandbox | 0.9.0, channel `preview-0.9` | upstream v1.0.5 (serves `v1beta1`, compatible) | Technology Preview, shipped with OpenShift sandboxed containers 1.12 |
+| Zero Trust Workload Identity Manager | 1.1.1, channel `stable-v1` | 1.1.1 | GA (since 1.0.0); see [known issue](docs/known-issues/ztwim-oidc-discovery-provider.md) |
+| Red Hat build of Keycloak | 26.6.7 | 26.6.7 (upstream Keycloak 26.8.0) | GA; **SPIFFE client authentication is Technology Preview** (`--features=spiffe`). Federated client auth with Kubernetes service accounts or OIDC is supported in 26.6 |
+| OpenShell gateway interceptors | in `8719fc9` | | Part of OpenShell; no Helm chart values yet |
+| [keycloak-registrar](interceptors/keycloak-registrar/) interceptor | this repository | | Prototype, not supported |
+| Security context | default `restricted-v2` SCC, no added capabilities, no privileged grant | | |
+
+## Known issues
+
+| Issue | Workaround |
+|---|---|
+| RHCOS kernels before 5.19 run sandboxes in legacy read-only mode: Python HTTPS fails, and servers that read the peer address on `accept()` fail ([OpenShell #4058](https://github.com/NVIDIA/OpenShell/issues/4058), fix in progress in [#4087](https://github.com/NVIDIA/OpenShell/pull/4087)) | Python shim in the [getting-started guide](guides/getting-started-openshell-openshift.md#known-limitations) |
+| [ZTWIM 1.1.1 OIDC discovery provider never becomes ready](docs/known-issues/ztwim-oidc-discovery-provider.md) | `scripts/token-exchange/01-fix-ztwim-oidc.sh` |
+| `helm upgrade` resets the gateway's interceptor registration | `make token-exchange` re-registers it; or re-run step 5 |
+| Stored user tokens stop working when the user's Keycloak session expires | Step 4 sets a 10-hour session; refresh with `openshell provider update` |
+
+## Images used in this repository
+
+| Image | Default in this repository | Replace with |
+|---|---|---|
+| OpenShell gateway, supervisor, sandbox runtime | `ghcr.io/nvidia/openshell/{gateway,supervisor,sandbox}:8719fc9…` (upstream development build, selected by the Helm chart) | Red Hat product builds. ODH builds exist for tagged releases only, for example `quay.io/opendatahub/odh-openshell-*:v0.1.2-rhaiv.3`; set `ODH_IMAGE_TAG` and the matching `OPENSHELL_HELM_VERSION` in `deploy-openshell.sh`. |
+| keycloak-registrar interceptor | Built on your cluster from [`interceptors/keycloak-registrar`](interceptors/keycloak-registrar/) using `docker.io/library/rust` as the builder | A product-built interceptor image once one exists |
+| Red Hat build of Keycloak | `registry.redhat.io/rhbk/keycloak-rhel9` 26.6.7 | Already a product image; use the RHBK operator in production |
+| Demo workloads (`whoami-api`, sandbox base images) | `registry.access.redhat.com/ubi9/*` | Your own workloads |
+
 ## Guides
 
 ### [Getting Started with OpenShell on OpenShift](guides/getting-started-openshell-openshift.md)
 
 End-to-end guide for installing OpenShell with Helm, exposing the gateway through an OpenShift Route, configuring mTLS, registering a provider, creating a sandbox, running Claude Code in the sandbox, and managing egress policies.
+
+### [Let agents call your APIs as the user, with no credentials in the sandbox](guides/spiffe-token-exchange-keycloak.md)
+
+Six scripts: give each sandbox its own SPIFFE identity with Zero Trust Workload Identity Manager, register it in Red Hat build of Keycloak automatically through the [keycloak-registrar](interceptors/keycloak-registrar/) gateway interceptor, and exchange the user's token for API-scoped tokens outside the sandbox.
 
 ### [Running OpenShell sandboxes with Kata runtime on OpenShift](guides/openshell-with-osc.md)
 
@@ -18,7 +84,7 @@ Route sandbox inference traffic through a token-authenticated RHOAI-served model
 
 ### [OpenShell Capability Testing and Security Analysis](scc-requirements.md)
 
-Testing results for OpenShell v0.0.85 on OpenShift, including capability behavior in the supervisor and sandbox user contexts.
+Historical testing results for OpenShell v0.0.85 on OpenShift. Since 0.1.0, OpenShell runs under `restricted-v2` without added capabilities.
 
 ## Demos
 

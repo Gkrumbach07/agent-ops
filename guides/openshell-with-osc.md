@@ -1,5 +1,11 @@
 # Running OpenShell sandboxes with Kata runtime on OpenShift
 
+> [!NOTE]
+> This guide was written for OpenShell 0.0.116 and has not been re-validated with
+> the build used by the getting-started guide (`main` at `8719fc9`). Chart 0.1.x
+> renamed the image values (`gateway.image.*`, `supervisor.image.*`,
+> `sandboxRuntime.image.*`) and no longer needs a privileged SCC.
+
 > **Midstream Documentation**
 >
 > Treat the OpenShift installation path as experimental. Do not use it in production.
