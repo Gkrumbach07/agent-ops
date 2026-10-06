@@ -1,6 +1,6 @@
 # Agent Ops
 
-Setup guides and demos for running [OpenShell](https://docs.nvidia.com/openshell/latest/) on OpenShift.
+Setup guides and demos for running [OpenShell](https://docs.nvidia.com/openshell/latest/) with OpenShift AI.
 
 > [!IMPORTANT]
 > **OpenShell runs on Red Hat product-built images** (`quay.io/opendatahub/odh-openshell-*:v0.1.2-rhaiv.5`).
@@ -102,7 +102,7 @@ Many of these, and several setup steps, are workarounds for missing product piec
 | Red Hat build of Keycloak | `registry.redhat.io/rhbk/keycloak-rhel9` 26.6.7 | Already a product image; use the RHBK operator in production |
 | Agent and demo images (sandbox workloads, `whoami-api`) | `registry.access.redhat.com/ubi9/*` | Your agent's image: start from `ubi9/ubi-minimal` and follow [Bring your own agent image](install/04-agent-images.md). The OpenClaw reference image `quay.io/opendatahub/odh-openshell-sandbox-openclaw` is in progress (pull-request builds only so far) |
 
-## Set up OpenShell on OpenShift
+## Set up OpenShell with OpenShift AI
 
 The platform track. Each step has a `make` target and needs step 1. Step 2 extends the Keycloak that step 3 deploys, so run `make token-exchange` before `make user-auth`. Steps 4 and 5 are independent.
 

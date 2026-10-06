@@ -10,7 +10,7 @@
 > [Images used in this repository](../README.md#images-used-in-this-repository).
 
 
-Install OpenShell on an OpenShift cluster, expose the gateway through a `Route`, connect the `openshell` CLI, and run a first sandbox. It takes around 15 minutes. This is step 1 of the setup track; the [README](../README.md#set-up-openshell-on-openshift) lists the next steps, and the [demos](../demos/) show what to do with it.
+Install OpenShell on an OpenShift cluster, expose the gateway through a `Route`, connect the `openshell` CLI, and run a first sandbox. It takes around 15 minutes. This is step 1 of the setup track; the [README](../README.md#set-up-openshell-with-openshift-ai) lists the next steps, and the [demos](../demos/) show what to do with it.
 
 New to OpenShell? Read [How OpenShell Works](https://docs.nvidia.com/openshell/latest/about/how-it-works) first for a quick tour of the architecture: the CLI, the gateway, and the supervisor.
 
