@@ -37,6 +37,7 @@ spec:
             - --features=spiffe,client-auth-federated
             - --hostname=${KEYCLOAK_URL}
             - --http-port=8080
+            - --proxy-headers=xforwarded   # behind an edge-terminated Route (scripts/user-auth)
             # RHBK 26.6 trusts the OpenShift service CA by default, which lets it fetch the
             # SPIRE JWKS. On 26.4, add:
             #   --truststore-paths=/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt

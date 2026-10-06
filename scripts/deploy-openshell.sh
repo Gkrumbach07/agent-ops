@@ -11,15 +11,25 @@ PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # Configuration with defaults
 NAMESPACE="${OPENSHELL_NAMESPACE:-openshell}"
 GATEWAY_NAME="${OPENSHELL_GATEWAY_NAME:-openshift}"
-# The dev chart's appVersion is the commit, so it pulls ghcr.io/nvidia/openshell/{gateway,supervisor,sandbox}
-# images tagged with that same commit. No image overrides are needed for the tested build.
-HELM_VERSION="${OPENSHELL_HELM_VERSION:-0.0.0-dev.8719fc9f37a93dd96435cf6753ae53c8ee8809e6}"
-# Optional: Red Hat (ODH) builds exist only for tagged releases. To use one, set both
-# ODH_IMAGE_TAG (e.g. v0.1.2-rhaiv.3) and the matching OPENSHELL_HELM_VERSION (e.g. 0.1.2).
-ODH_IMAGE_TAG="${ODH_IMAGE_TAG:-}"
+# Validated build: Red Hat (ODH) images v0.1.2-rhaiv.5, built from upstream main @ e7fdd6b,
+# with the upstream development chart for that same commit.
+HELM_VERSION="${OPENSHELL_HELM_VERSION:-0.0.0-dev.e7fdd6beef98f7f92d86271a169fdd4d3be44cf3}"
+# Product images (quay.io/opendatahub/odh-openshell-*). Set ODH_IMAGE_TAG= (empty) to use the
+# upstream images the chart selects instead (ghcr.io/nvidia/openshell/*:<chart commit>).
+ODH_IMAGE_TAG="${ODH_IMAGE_TAG-v0.1.2-rhaiv.5}"
 ODH_IMAGE_REGISTRY="${ODH_IMAGE_REGISTRY:-quay.io/opendatahub}"
+# Repository name prefix under ODH_IMAGE_REGISTRY: <prefix>{gateway,supervisor,sandbox}.
+# Set to "openshell-" for custom builds such as quay.io/<you>/openshell-gateway.
+ODH_IMAGE_REPO_PREFIX="${ODH_IMAGE_REPO_PREFIX:-odh-openshell-}"
 # Set to true to mount the SPIFFE Workload API (ZTWIM) for dynamic provider token grants.
 ENABLE_SPIFFE="${OPENSHELL_ENABLE_SPIFFE:-false}"
+# User authentication. Empty issuer: no user login, every caller is a trusted local developer
+# (evaluation only). With an issuer, the gateway validates OIDC tokens and refuses anonymous callers.
+OIDC_ISSUER="${OPENSHELL_OIDC_ISSUER:-}"
+OIDC_AUDIENCE="${OPENSHELL_OIDC_AUDIENCE:-openshell-gateway}"
+OIDC_ROLES_CLAIM="${OPENSHELL_OIDC_ROLES_CLAIM:-realm_access.roles}"
+OIDC_ADMIN_ROLE="${OPENSHELL_OIDC_ADMIN_ROLE:-openshell-admin}"
+OIDC_USER_ROLE="${OPENSHELL_OIDC_USER_ROLE:-openshell-user}"
 
 # Validate inputs to prevent injection attacks
 if [[ ! "$NAMESPACE" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
@@ -49,6 +59,27 @@ fi
 
 if [[ ! "$HELM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
     echo "ERROR: Invalid Helm version. Must be semver, optionally with a pre-release (e.g., 0.0.0-dev.<commit>)." >&2
+    exit 1
+fi
+
+if [[ ! "$ODH_IMAGE_REPO_PREFIX" =~ ^[a-z0-9._/-]*$ || ! "$ODH_IMAGE_REGISTRY" =~ ^[A-Za-z0-9.:/_-]+$ ]]; then
+    echo "ERROR: Invalid ODH_IMAGE_REGISTRY or ODH_IMAGE_REPO_PREFIX." >&2
+    exit 1
+fi
+
+if [[ -n "$OIDC_ISSUER" && ! "$OIDC_ISSUER" =~ ^https://[A-Za-z0-9.:/_-]+$ ]]; then
+    echo "ERROR: OPENSHELL_OIDC_ISSUER must be an https:// URL (the gateway rejects HTTP issuers)." >&2
+    exit 1
+fi
+for v in "$OIDC_AUDIENCE" "$OIDC_ROLES_CLAIM" "$OIDC_ADMIN_ROLE" "$OIDC_USER_ROLE"; do
+    if [[ ! "$v" =~ ^[A-Za-z0-9._:/-]+$ ]]; then
+        echo "ERROR: Invalid OIDC setting: $v" >&2
+        exit 1
+    fi
+done
+
+if [[ -n "$ODH_IMAGE_TAG" && ! "$ODH_IMAGE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    echo "ERROR: Invalid ODH_IMAGE_TAG. Must be an image tag such as v0.1.2-rhaiv.5." >&2
     exit 1
 fi
 
@@ -173,16 +204,27 @@ install_helm() {
         --namespace "${NAMESPACE}"
         --set podSecurityContext.fsGroup=null
         --set securityContext.runAsUser=null
-        --set server.auth.allowUnauthenticatedUsers=true
         --set "pkiInitJob.serverDnsNames[0]=${ROUTE_HOSTNAME}"
     )
+    if [[ -n "${OIDC_ISSUER}" ]]; then
+        helm_args+=(
+            --set server.auth.allowUnauthenticatedUsers=false
+            --set server.oidc.issuer="${OIDC_ISSUER}"
+            --set server.oidc.audience="${OIDC_AUDIENCE}"
+            --set server.oidc.rolesClaim="${OIDC_ROLES_CLAIM}"
+            --set server.oidc.adminRole="${OIDC_ADMIN_ROLE}"
+            --set server.oidc.userRole="${OIDC_USER_ROLE}"
+        )
+    else
+        helm_args+=(--set server.auth.allowUnauthenticatedUsers=true)
+    fi
     if [[ -n "${ODH_IMAGE_TAG}" ]]; then
         helm_args+=(
             --set global.image.registry="${ODH_IMAGE_REGISTRY}"
             --set global.image.tag="${ODH_IMAGE_TAG}"
-            --set gateway.image.repository=odh-openshell-gateway
-            --set supervisor.image.repository=odh-openshell-supervisor
-            --set sandboxRuntime.image.repository=odh-openshell-sandbox
+            --set gateway.image.repository="${ODH_IMAGE_REPO_PREFIX}gateway"
+            --set supervisor.image.repository="${ODH_IMAGE_REPO_PREFIX}supervisor"
+            --set sandboxRuntime.image.repository="${ODH_IMAGE_REPO_PREFIX}sandbox"
         )
     fi
     if [[ "${ENABLE_SPIFFE}" == "true" ]]; then

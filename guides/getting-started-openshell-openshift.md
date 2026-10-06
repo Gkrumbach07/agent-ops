@@ -5,9 +5,8 @@
 > The OpenShift install path should be treated as experimental and not used in production.
 
 > [!IMPORTANT]
-> **Replace the images before customer or production use.** This guide installs the
-> upstream OpenShell development images that the Helm chart selects
-> (`ghcr.io/nvidia/openshell/*`). Swap them for Red Hat product-built images. See
+> This guide installs the Red Hat product-built OpenShell images
+> (`quay.io/opendatahub/odh-openshell-*:v0.1.2-rhaiv.5`). See
 > [Images used in this repository](../README.md#images-used-in-this-repository).
 
 A walkthrough for installing OpenShell on an OpenShift cluster, exposing the gateway through a `Route`, and running your first sandboxed agent session with network policies controlling what it can reach. By the end you will have a sandboxed agent running against your LLM provider, with an egress policy you control. The guide takes around 15 minutes.
@@ -39,13 +38,15 @@ Unless noted otherwise, run all commands on your local machine.
 
 ## Install the OpenShell CLI
 
-This guide uses the OpenShell build validated on OpenShift: upstream `main` at
-commit `8719fc9` (chart `0.0.0-dev.8719fc9f37a93dd96435cf6753ae53c8ee8809e6`).
-That commit has no tagged CLI release. From a checked-out copy of this
-repository, run the installer wrapper. It downloads `install.sh` from commit
-`8719fc9`, verifies its pinned SHA-256 checksum, and installs the rolling `dev`
-CLI build, which can be newer than the gateway. The CLI used for validation was
-built from source at `8719fc9` (`cargo build --release -p openshell-cli`).
+This guide uses the OpenShell build validated on OpenShift: the Red Hat build
+`v0.1.2-rhaiv.5`, made from upstream `main` at commit `e7fdd6b`. There is no
+tagged CLI release for it. From a checked-out copy of this repository, run the
+installer wrapper. It downloads `install.sh` from commit `8719fc9`, verifies its
+pinned SHA-256 checksum, and installs the rolling `dev` CLI build. The CLI used
+for validation was built from source at `8719fc9`
+(`cargo build --release -p openshell-cli`) and works with the `v0.1.2-rhaiv.5`
+gateway. A Linux CLI binary from the same Red Hat build is in
+`quay.io/opendatahub/odh-openshell-cli:v0.1.2-rhaiv.5`.
 
 ```shell
 ./scripts/install-openshell-cli.sh
@@ -79,22 +80,18 @@ echo "$ROUTE_HOST"
 
 See the [OpenShell Helm chart README.md file](https://github.com/NVIDIA/OpenShell/blob/main/deploy/helm/openshell/README.md) for full chart details.
 
-Set the chart version. The development chart's `appVersion` is the commit, so it
-pulls the gateway, supervisor, and sandbox runtime images tagged with the same
-commit from `ghcr.io/nvidia/openshell`. No image overrides are needed:
+Set the image tag and the chart version. Red Hat builds are tagged
+`v<upstream version>-rhaiv.<build>`; use the upstream development chart for the
+commit the build was made from (`e7fdd6b` for `v0.1.2-rhaiv.5`):
 
 ```shell
-OPENSHELL_CHART_VERSION=0.0.0-dev.8719fc9f37a93dd96435cf6753ae53c8ee8809e6
+OPENSHELL_IMAGE_TAG=v0.1.2-rhaiv.5
+OPENSHELL_CHART_VERSION=0.0.0-dev.e7fdd6beef98f7f92d86271a169fdd4d3be44cf3
 ```
 
-> [!NOTE]
-> Red Hat (ODH) image builds exist only for tagged releases, such as
-> `v0.1.2-rhaiv.3` for chart `0.1.2`. To use one, install chart `0.1.2` and add
-> `--set global.image.registry=quay.io/opendatahub --set global.image.tag=v0.1.2-rhaiv.3`
-> plus `--set gateway.image.repository=odh-openshell-gateway`,
-> `--set supervisor.image.repository=odh-openshell-supervisor`, and
-> `--set sandboxRuntime.image.repository=odh-openshell-sandbox`. That combination
-> has not been validated with this guide.
+The `--set ...image...` flags in the install commands below replace the chart's
+default upstream images (`ghcr.io/nvidia/openshell/*`) with the Red Hat builds
+from `quay.io/opendatahub`.
 
 Choose a database backend before installing. OpenShell supports SQLite (the default) and external PostgreSQL. Choose **one** of the two options below.
 
@@ -115,7 +112,12 @@ helm install openshell oci://ghcr.io/nvidia/openshell/helm-chart \
   --set podSecurityContext.fsGroup=null \
   --set securityContext.runAsUser=null \
   --set server.auth.allowUnauthenticatedUsers=true \
-  --set "pkiInitJob.serverDnsNames[0]=${ROUTE_HOST}"
+  --set "pkiInitJob.serverDnsNames[0]=${ROUTE_HOST}" \
+  --set global.image.registry=quay.io/opendatahub \
+  --set global.image.tag="${OPENSHELL_IMAGE_TAG}" \
+  --set gateway.image.repository=odh-openshell-gateway \
+  --set supervisor.image.repository=odh-openshell-supervisor \
+  --set sandboxRuntime.image.repository=odh-openshell-sandbox
 ```
 
 
@@ -149,7 +151,12 @@ helm install openshell oci://ghcr.io/nvidia/openshell/helm-chart \
   --set podSecurityContext.fsGroup=null \
   --set securityContext.runAsUser=null \
   --set server.auth.allowUnauthenticatedUsers=true \
-  --set "pkiInitJob.serverDnsNames[0]=${ROUTE_HOST}"
+  --set "pkiInitJob.serverDnsNames[0]=${ROUTE_HOST}" \
+  --set global.image.registry=quay.io/opendatahub \
+  --set global.image.tag="${OPENSHELL_IMAGE_TAG}" \
+  --set gateway.image.repository=odh-openshell-gateway \
+  --set supervisor.image.repository=odh-openshell-supervisor \
+  --set sandboxRuntime.image.repository=odh-openshell-sandbox
 ```
 
 `workload.kind=deployment` lets you run multiple gateway replicas that all connect to the same external database. Option A uses `statefulset` instead because each pod needs its own persistent volume for the SQLite file.
@@ -229,7 +236,7 @@ Server Status
   Gateway: openshift
   Server: https://<ROUTE_HOST>
   Status: Connected
-  Version: 0.1.3-dev.61+g8719fc9f3
+  Version: 0.1.2-rhaiv.5
 ```
 
 `Connected` means the `openshell` CLI completed a full mTLS handshake with the gateway running in your cluster. Everything from here on talks to that gateway, not to Kubernetes directly.
@@ -335,6 +342,22 @@ openshell policy get my-sandbox --full
 
 
 
+## Optional: the OpenShell dashboard
+
+The [OpenShell dashboard](https://github.com/Gkrumbach07/openshell-dashboard) is a standalone web UI for workspaces, sandboxes, providers and gateway status. It talks to the gateway with the same mTLS client bundle as the CLI. Dashboard `1.2.0` supports gateways `0.1.0` to `0.1.2` and was validated against `v0.1.2-rhaiv.5`: it reports the gateway as supported, lists workspaces and sandboxes, and creates, inspects and deletes sandboxes.
+
+Deploy it into the gateway's namespace, without a `Route`, and open it through a port-forward:
+
+```shell
+make dashboard                     # OPENSHELL_NAMESPACE defaults to openshell
+oc -n openshell port-forward svc/openshell-dashboard 8080:8080
+```
+
+Open `http://localhost:8080`.
+
+> [!WARNING]
+> This manifest runs the dashboard with `AUTH_DISABLED=true`, so anyone who can reach it acts as a platform admin. Keep it behind `oc port-forward`; do not create a `Route` for it. A shared deployment needs an authenticating proxy (oauth2-proxy with the same Keycloak realm the gateway trusts) and OIDC on the gateway; see the dashboard's [Auth](https://github.com/Gkrumbach07/openshell-dashboard#auth) section. That setup has not been validated with this guide.
+
 ## Troubleshooting
 
 - **Status shows Disconnected.** Verify the `Route` exists (`oc get route -n openshell`) and that the TLS bundle directory name matches the `--name` used in `gateway add`.
@@ -344,7 +367,9 @@ openshell policy get my-sandbox --full
 
 ## Known Limitations
 
-**Legacy read-only mode on RHCOS kernels.** OpenShift nodes run a 5.14 kernel. Before Linux 5.19, the sandbox cannot safely write syscall results back into workload memory, so it runs in legacy read-only mode: `getpeername()`, `accept()` with a peer-address argument, and some `sendmmsg()` paths return `EOPNOTSUPP`. Python's `ssl` module calls `getpeername()` when it wraps a socket, so HTTPS from Python (urllib, requests, httpx, and SDKs built on them) fails inside sandboxes. Plain HTTP from Python and HTTPS through `curl` work. Until this is fixed, load this shim before the agent's code (for example as `sitecustomize.py` on `PYTHONPATH`):
+**Legacy read-only mode on RHCOS kernels.** OpenShift 4.x nodes run a 5.14 kernel. Before Linux 5.19, the sandbox in `v0.1.2-rhaiv.5` runs in legacy read-only mode: `getpeername()`, `accept()` with a peer-address argument, and some `sendmmsg()` paths return `EOPNOTSUPP`. Python's `ssl` module calls `getpeername()` when it wraps a socket, so HTTPS from Python (urllib, requests, httpx, and SDKs built on them) fails inside sandboxes, and local servers that accept connections (for example `opencode serve`) fail. Plain HTTP from Python and HTTPS through `curl` work.
+
+This is fixed upstream by [OpenShell #4150](https://github.com/NVIDIA/OpenShell/pull/4150) (merged 2026-10-06), which removes legacy read-only mode. We verified Python HTTPS without a shim on RHCOS 5.14 with the `odh-stable` build; the fix reaches a versioned Red Hat build after `v0.1.2-rhaiv.5`. OpenShell now documents OpenShift 4.19 as the minimum, because RHCOS kernels in 4.16 to 4.18 lack Landlock. Until you run a build with the fix, load this shim before the agent's code (for example as `sitecustomize.py` on `PYTHONPATH`):
 
 ```python
 import errno, socket

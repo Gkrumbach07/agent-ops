@@ -19,7 +19,8 @@ if [[ -z "${TRUST_DOMAIN:-}" ]]; then
     export TRUST_DOMAIN="spiffe://${td}"
 fi
 
-export KEYCLOAK_URL="http://keycloak.${KEYCLOAK_NAMESPACE}.svc.cluster.local"
+# In-cluster by default; scripts/user-auth/env.sh switches it to the public HTTPS Route.
+export KEYCLOAK_URL="${KEYCLOAK_URL:-http://keycloak.${KEYCLOAK_NAMESPACE}.svc.cluster.local}"
 export ISSUER="${KEYCLOAK_URL}/realms/${REALM}"
 export GATEWAY_SPIFFE_ID="${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}"
 export SPIRE_JWKS="https://spire-spiffe-oidc-discovery-provider.openshift-ztwim.svc.cluster.local/keys"

@@ -6,10 +6,10 @@
 > Preview. Do not use in production.
 
 > [!IMPORTANT]
-> **Replace the images before customer or production use.** This guide pulls
-> upstream OpenShell development images (`ghcr.io/nvidia/openshell/*`) and builds
-> the registrar interceptor from source with a community Rust builder image. Swap
-> them for Red Hat product-built images when they are available. See
+> OpenShell runs on Red Hat product-built images (`quay.io/opendatahub/odh-openshell-*:v0.1.2-rhaiv.5`);
+> the full path below passed on them on 2026-10-06. The registrar interceptor is
+> still built from source with a community Rust builder image; replace it with a
+> product-built image once one exists. See
 > [Images used in this repository](../README.md#images-used-in-this-repository).
 
 An agent in an OpenShell sandbox calls an internal API. The API sees the **user**

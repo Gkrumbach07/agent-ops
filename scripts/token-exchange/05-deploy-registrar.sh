@@ -52,8 +52,9 @@ fi
 oc -n "${NAMESPACE}" rollout restart sts/"${RELEASE}" >/dev/null
 oc -n "${NAMESPACE}" rollout status sts/"${RELEASE}" --timeout=300s
 
-for _ in $(seq 1 30); do
-    if oc -n "${NAMESPACE}" logs "${RELEASE}-0" 2>/dev/null | grep -q "gateway interceptors initialized"; then
+for _ in $(seq 1 90); do  # up to 3 minutes: OIDC discovery slows gateway start
+    # No grep -q: it exits at the first match, oc gets SIGPIPE, and pipefail turns that into a failure.
+    if oc -n "${NAMESPACE}" logs "${RELEASE}-0" 2>/dev/null | grep "gateway interceptors initialized" >/dev/null; then
         log "gateway connected to the interceptor (TLS, token, protocol, and audience checks passed)"
         exit 0
     fi

@@ -33,3 +33,25 @@ try-it: ## Call a protected API from a sandbox as the demo user (step 6)
 
 clean-demo: ## Delete the try-it sandbox
 	@openshell sandbox delete token-exchange-demo
+
+dashboard: ## Deploy the OpenShell dashboard (no Route; open with oc port-forward)
+	@ns=$${OPENSHELL_NAMESPACE:-openshell}; \
+	sed "s/__NAMESPACE__/$$ns/g" common/openshell-dashboard.yaml | oc -n "$$ns" apply -f - && \
+	oc -n "$$ns" rollout status deploy/openshell-dashboard --timeout=180s && \
+	echo "Open it with: oc -n $$ns port-forward svc/openshell-dashboard 8080:8080, then http://localhost:8080"
+
+switch-images: ## Re-deploy with other images (ODH_IMAGE_TAG, OPENSHELL_HELM_VERSION, ODH_IMAGE_REGISTRY, ODH_IMAGE_REPO_PREFIX) and re-register the interceptor
+	@OPENSHELL_ENABLE_SPIFFE=$${OPENSHELL_ENABLE_SPIFFE:-true} ./scripts/deploy-openshell.sh
+	@if oc -n "$${OPENSHELL_NAMESPACE:-openshell}" get deploy/keycloak-registrar >/dev/null 2>&1; then $(TE)/05-deploy-registrar.sh; fi
+
+UA := scripts/user-auth
+
+user-auth: ## Turn on user login: Keycloak over HTTPS, OIDC on the gateway, dashboard behind oauth2-proxy
+	@$(UA)/01-keycloak-route.sh
+	@$(UA)/02-configure-realm.sh
+	@$(UA)/03-gateway-oidc.sh
+	@$(UA)/04-dashboard-login.sh
+	@$(UA)/verify.sh
+
+verify-user-auth: ## Check user login end to end (gateway, roles, workspace membership, dashboard browser login)
+	@$(UA)/verify.sh
