@@ -1,4 +1,4 @@
-# Get started with OpenShell on OpenShift
+# Install OpenShell on OpenShift
 
 > **Midstream Documentation**
 >
@@ -9,7 +9,8 @@
 > (`quay.io/opendatahub/odh-openshell-*:v0.1.2-rhaiv.5`). See
 > [Images used in this repository](../README.md#images-used-in-this-repository).
 
-A walkthrough for installing OpenShell on an OpenShift cluster, exposing the gateway through a `Route`, and running your first sandboxed agent session with network policies controlling what it can reach. By the end you will have a sandboxed agent running against your LLM provider, with an egress policy you control. The guide takes around 15 minutes.
+
+Install OpenShell on an OpenShift cluster, expose the gateway through a `Route`, connect the `openshell` CLI, and run a first sandbox. It takes around 15 minutes. This is step 1 of the setup track; the [README](../README.md#set-up-openshell-on-openshift) lists the next steps, and the [demos](../demos/) show what to do with it.
 
 New to OpenShell? Read [How OpenShell Works](https://docs.nvidia.com/openshell/latest/about/how-it-works) first for a quick tour of the architecture: the CLI, the gateway, and the supervisor.
 
@@ -96,7 +97,7 @@ from `quay.io/opendatahub`.
 Choose a database backend before installing. OpenShell supports SQLite (the default) and external PostgreSQL. Choose **one** of the two options below.
 
 > [!WARNING]
-> Both examples below set `allowUnauthenticatedUsers=true`. This bypasses user authentication and treats every API request as a trusted local developer. It is a convenience shortcut for single-user test clusters and should not be used on shared clusters. To turn on real logins (Keycloak, roles, workspace access by group, the dashboard behind a login), follow [User authentication](user-authentication.md) after this guide (`make user-auth`).
+> Both examples below set `allowUnauthenticatedUsers=true`. This bypasses user authentication and treats every API request as a trusted local developer. It is a convenience shortcut for single-user test clusters and should not be used on shared clusters. To turn on real logins (Keycloak, roles, workspace access by group, the dashboard behind a login), follow [User authentication](02-user-auth.md) after this guide (`make user-auth`).
 
 ### Option A: SQLite (default)
 
@@ -241,106 +242,15 @@ Server Status
 
 `Connected` means the `openshell` CLI completed a full mTLS handshake with the gateway running in your cluster. Everything from here on talks to that gateway, not to Kubernetes directly.
 
-## Configure an inference provider
 
-Register the LLM provider credentials with the gateway, enable the v2 provider pipeline, and configure which model the `inference.local` endpoint routes to inside sandboxes. This guide uses Google Vertex AI with Application Default Credentials as the example:
-
-```shell
-openshell provider create \
-  --name <provider-name> \
-  --type google-vertex-ai \
-  --from-gcloud-adc \
-  --config VERTEX_AI_PROJECT_ID=<gcp-project-id> \
-  --config VERTEX_AI_REGION=<gcp-region>
-
-openshell settings set --global --key providers_v2_enabled --value true --yes
-
-openshell inference set --provider <provider-name> --model <model-name>
-```
-
-The gateway stores the provider credentials and applies them when routing inference requests, rather than exposing the credentials as sandbox environment variables.
-
-Using a different provider? See the [Supported Provider Types](https://docs.nvidia.com/openshell/latest/sandboxes/manage-providers#supported-provider-types) reference for the full list. Anthropic, OpenAI, NVIDIA API Catalog, AWS Bedrock, GitHub Copilot, and others are all supported, each with its own `--type` and credential shape.
-
-To route inference to a model served by RHOAI rather than an external provider, see [Inference Routing with RHOAI via OpenShell](inference-routing-rhoai.md).
-
-## Create a sandbox
+## Run a first sandbox
 
 ```shell
-openshell sandbox create --name my-sandbox
+openshell sandbox create --name hello -- echo "hello from a sandbox"
+openshell sandbox delete hello
 ```
 
-This starts a sandbox pod in the `openshell` namespace. When the sandbox is ready, the command opens an interactive shell in the sandbox. The supervisor configures inference routing, audit logging, policy enforcement, and the associated Open Policy Agent (OPA) policy engine.
-
-## Run Claude Code in the sandbox
-
-From the shell you just landed in, launch Claude Code:
-
-```shell
-ANTHROPIC_BASE_URL="https://inference.local" \
-ANTHROPIC_API_KEY=unused \
-CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 \
-claude --bare
-```
-
-This routes model traffic through the gateway instead of Anthropic directly, so it can inject your real Vertex AI credentials. `--bare` skips login since auth is already handled by the provider. `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` prevents Claude Code from sending beta headers that the OpenShell proxy does not yet pass through. Without it, the proxy rejects requests with unrecognised headers. Configuration differs for other supported agents. For more information, see [Supported Agents](https://docs.nvidia.com/openshell/latest/about/supported-agents).
-
-## Update the egress policy
-
-Ask Claude, or your agent of choice, to curl `https://github.com`. The default policy blocks it:
-
-```text
-Output: The curl command failed with a 403 Forbidden error.
-```
-
-> [!NOTE]
-> You can also run `curl https://github.com` directly in the sandbox shell to verify the policy deterministically.
-
-From your local machine, add a policy to allow access:
-
-```shell
-openshell policy update my-sandbox --add-endpoint github.com:443:read-only:rest:enforce --binary /usr/bin/curl --wait
-```
-
-This allows `/usr/bin/curl` to reach `github.com:443` with read-only REST access (GET, HEAD, OPTIONS). `--wait` blocks until the sandbox confirms the policy is live.
-
-Ask it to curl GitHub again, and this time it succeeds:
-
-```text
-Output: This time it worked! The curl successfully retrieved the GitHub homepage.
-```
-
-
-
-## Inspect events in the OpenShell terminal
-
-OpenShell records sandbox network requests and policy decisions as events. The `openshell term` TUI displays these events in real time:
-
-```shell
-openshell term
-```
-
-This opens on the dashboard, listing your gateways and sandboxes. Select `my-sandbox` and press `Enter` to open its detail view, then press `l` to switch to its live logs. Each log entry is an Open Cybersecurity Schema Framework (OCSF) event showing the verdict (`ALLOWED` or `DENIED`), the binary and destination endpoint, and which policy and engine made the decision. For example:
-
-```text
-NET:OPEN [MED] DENIED /usr/local/bin/claude(43) -> github.com:443 [policy:- engine:opa] [reason:endpoint github.com:443 is not allowed by any policy]
-```
-
-After the policy update, the same log view shows the request going through instead:
-
-```text
-NET:OPEN [INFO] ALLOWED /usr/bin/curl(118) -> github.com:443 [policy:my-sandbox engine:opa]
-```
-
-Switch over to the policy view to see the rule you added earlier, alongside everything else currently enforced on the sandbox. Each entry shows the binary, endpoint, access level, and enforcement mode.
-
-Alternatively, you can use the `openshell` CLI:
-
-```shell
-openshell policy get my-sandbox --full
-```
-
-
+The sandbox runs in the `openshell` namespace with the default policy: no network access out of the sandbox, and only the default filesystem paths. To run your own agent, see [Bring your own agent image](04-agent-images.md); for a guided agent session, see the [Claude Code demo](../demos/claude-code-vertex/).
 
 ## Optional: the OpenShell dashboard
 
@@ -356,7 +266,7 @@ oc -n openshell port-forward svc/openshell-dashboard 8080:8080
 Open `http://localhost:8080`.
 
 > [!WARNING]
-> This manifest runs the dashboard with `AUTH_DISABLED=true`, so anyone who can reach it acts as a platform admin. Keep it behind `oc port-forward`; do not create a `Route` for it. For a shared deployment, `make user-auth` replaces this evaluation install with the dashboard behind an oauth2-proxy login, OIDC on the gateway and a NetworkPolicy; see [User authentication](user-authentication.md).
+> This manifest runs the dashboard with `AUTH_DISABLED=true`, so anyone who can reach it acts as a platform admin. Keep it behind `oc port-forward`; do not create a `Route` for it. For a shared deployment, `make user-auth` replaces this evaluation install with the dashboard behind an oauth2-proxy login, OIDC on the gateway and a NetworkPolicy; see [User authentication](02-user-auth.md).
 
 ## Troubleshooting
 

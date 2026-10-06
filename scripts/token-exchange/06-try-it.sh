@@ -2,7 +2,7 @@
 # Step 6: end-to-end check. Deploys a small "whoami" API that verifies Keycloak tokens
 # (JWKS, audience ${TARGET_API}), creates an OpenShell provider holding the demo user's
 # token, starts a sandbox, and calls the API from inside it without any credential.
-# Requires the openshell CLI connected to the gateway (see the getting-started guide).
+# Requires the openshell CLI connected to the gateway (see install/01-install.md).
 set -euo pipefail
 . "$(dirname "$0")/env.sh"
 SANDBOX="${SANDBOX_NAME:-token-exchange-demo}"

@@ -31,7 +31,7 @@ make token-exchange   # preflight, then steps 0 to 5 (about 4 minutes)
 make try-it           # step 6
 ```
 
-After [User authentication](user-authentication.md) (`make user-auth`), both flows share one Keycloak issuer, its HTTPS Route, and the gateway refuses anonymous callers. Run the demo with the admin CLI entry:
+After [User authentication](02-user-auth.md) (`make user-auth`), both flows share one Keycloak issuer, its HTTPS Route, and the gateway refuses anonymous callers. Run the demo with the admin CLI entry:
 
 ```shell
 export OPENSHELL_GATEWAY=<namespace>   # the CLI entry make user-auth registers
@@ -46,7 +46,7 @@ The rest of this page walks through the steps one at a time.
 
 Check them with `./scripts/preflight.sh --token-exchange`. You need:
 
-- OpenShell installed with [Get started with OpenShell on OpenShift](getting-started-openshell-openshift.md), and the `openshell` CLI connected to it.
+- OpenShell installed with [Get started with OpenShell on OpenShift](01-install.md), and the `openshell` CLI connected to it.
 - **Zero Trust Workload Identity Manager** 1.1.1 (Software Catalog, channel `stable-v1`) with a trust domain configured, for example `openshell.local`. See the [ZTWIM documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/security_and_compliance/zero-trust-workload-identity-manager).
 - Pull access to `registry.redhat.io` for the Red Hat build of Keycloak image (the default global pull secret is enough).
 
@@ -78,7 +78,7 @@ ZTWIM 1.1.1 tells SPIRE to ignore `openshift-*` namespaces, which includes its o
 and crash-loops. Keycloak needs that endpoint to verify sandbox identities. The
 script registers the provider with one `ClusterStaticEntry` per worker node. Re-run
 it after adding or replacing worker nodes. Details, evidence, and the suggested fix:
-[ZTWIM 1.1.1 OIDC discovery provider never becomes ready](../docs/known-issues/ztwim-oidc-discovery-provider.md).
+[ZTWIM 1.1.1 OIDC discovery provider never becomes ready](../reference/known-issues/ztwim-oidc-discovery-provider.md).
 
 ## Step 2: Give each sandbox its own SPIFFE ID
 
@@ -181,7 +181,7 @@ allowed to call them. Do not set `tls: none`; current OpenShell rejects it.
 | Every call returns HTTP 502 after a while; Keycloak logs `subject_token validation failure` | The user's Keycloak session expired. Stored tokens only work while the session is alive. Step 4 sets a 10-hour idle timeout. | Refresh the token: `openshell provider update <provider> --credential subject_token=<new token>`. It applies to running sandboxes. |
 | First call from a new sandbox returns HTTP 502; Keycloak logs `Audience not found` | The sandbox's Keycloak client does not exist. The interceptor was down when the sandbox was created. | Check `oc logs deploy/keycloak-registrar`, then recreate the sandbox. |
 | Gateway fails to start after step 5 | The gateway cannot reach the interceptor at startup. | Check `oc get pods -l app=keycloak-registrar` and the gateway log for `interceptor`. |
-| Python HTTPS calls fail with `Operation not supported` | RHCOS kernel limitation. | See Known Limitations in the [getting-started guide](getting-started-openshell-openshift.md#known-limitations). |
+| Python HTTPS calls fail with `Operation not supported` | RHCOS kernel limitation. | See Known Limitations in the [install guide](01-install.md#known-limitations). |
 
 ## Known limitations
 

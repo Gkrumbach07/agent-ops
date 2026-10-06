@@ -6,9 +6,9 @@
 > Versions: [What was validated](../README.md#what-was-validated-and-its-support-status). Keycloak runs in
 > dev mode here. Do not use in production.
 
-The getting-started guide runs the gateway with `allowUnauthenticatedUsers=true`: every caller is a trusted local developer, and the dashboard treats every visitor as a platform admin. This guide turns on real logins and makes **Keycloak groups the only thing an administrator manages**: put a person in a group and they can sign in and use that workspace; take them out and they lose it.
+The install guide runs the gateway with `allowUnauthenticatedUsers=true`: every caller is a trusted local developer, and the dashboard treats every visitor as a platform admin. This guide turns on real logins and makes **Keycloak groups the only thing an administrator manages**: put a person in a group and they can sign in and use that workspace; take them out and they lose it.
 
-It covers people. Sandbox identity (an agent calling an API as the user) is the [token-exchange guide](spiffe-token-exchange-keycloak.md); both use the same Keycloak realm and issuer.
+It covers people. Sandbox identity (an agent calling an API as the user) is the [token-exchange guide](03-agent-identity.md); both use the same Keycloak realm and issuer.
 
 ## How access works
 
@@ -36,7 +36,7 @@ openshell-<ns>-ws-<workspace>-admins-> gateway user + admin of <workspace>
 
 ## Before you start
 
-- `make token-exchange` has run: it deploys Keycloak and the realm that this guide extends. See [Let agents call your APIs as the user](spiffe-token-exchange-keycloak.md).
+- `make token-exchange` has run: it deploys Keycloak and the realm that this guide extends. See [Let agents call your APIs as the user](03-agent-identity.md).
 - `jq` and `curl` are installed locally. The other requirements are in the [README](../README.md#requirements).
 - Run `./scripts/preflight.sh --user-auth`. It checks the above and whether the cluster's Route certificates are publicly trusted.
 - **Private CA.** If preflight warns that Route certificates are not publicly trusted, save the CA that signs them as a PEM file and export `KEYCLOAK_CA_FILE` before every user-auth command. The gateway and oauth2-proxy then trust it through ConfigMap `keycloak-ca`, and the local scripts and CLI trust it too:
@@ -108,7 +108,7 @@ The user's experience: open the dashboard link and sign in with their account; f
 | Signed in to the dashboard, then `403 Forbidden` from the proxy | The user is in none of this gateway's groups | `make grant ...`; the proxy only admits this gateway's `admin` and `user` roles |
 | CLI: `missing authorization header` | The CLI entry uses the mTLS bundle, which no longer signs anyone in once OIDC is on | Register an OIDC entry: `make connect-info` |
 | CLI: `OIDC token refresh failed: no refresh token available` | Service-account sessions expire after 5 minutes and the CLI does not log in again on its own | `openshell gateway login <name>` before commands |
-| `make try-it` fails after `make user-auth` | The gateway refuses anonymous callers | Run it with `OPENSHELL_GATEWAY` and `OPENSHELL_OIDC_CLIENT_SECRET` set; see the [token-exchange guide](spiffe-token-exchange-keycloak.md) |
+| `make try-it` fails after `make user-auth` | The gateway refuses anonymous callers | Run it with `OPENSHELL_GATEWAY` and `OPENSHELL_OIDC_CLIENT_SECRET` set; see the [token-exchange guide](03-agent-identity.md) |
 | Gateway logs `invalid audience` or users have no role | The login client lacks this gateway's role scope, or the user has no group | Re-run `scripts/user-auth/02-configure-realm.sh`; check the user's groups |
 
 ## Known gaps

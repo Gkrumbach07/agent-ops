@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Checks that a cluster is ready for OpenShell before anything is installed.
 # Usage: ./scripts/preflight.sh [--token-exchange] [--user-auth]
-#   --token-exchange  also check the prerequisites of guides/spiffe-token-exchange-keycloak.md
-#   --user-auth       also check guides/user-authentication.md (implies --token-exchange)
+#   --token-exchange  also check the prerequisites of install/03-agent-identity.md
+#   --user-auth       also check install/02-user-auth.md (implies --token-exchange)
 # Exits non-zero if a required check fails. Warnings do not fail the run.
 set -uo pipefail
 
@@ -59,7 +59,7 @@ kernel=$(oc get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[0].
 if version_ge "${kernel%%-*}" "5.19"; then
     pass "worker kernel ${kernel}"
 else
-    warn "worker kernel ${kernel} is before Linux 5.19: sandboxes run in legacy read-only mode (Python HTTPS and some servers need workarounds; see the getting-started guide)"
+    warn "worker kernel ${kernel} is before Linux 5.19: sandboxes run in legacy read-only mode (Python HTTPS and some servers need workarounds; see install/01-install.md)"
 fi
 
 echo "Red Hat build of Agent Sandbox"
@@ -101,7 +101,7 @@ if [[ "${USER_AUTH}" == true ]]; then
     if curl -s -m 10 -o /dev/null "https://console-openshift-console.${domain}/"; then
         pass "Route certificates on *.${domain} are publicly trusted"
     else
-        warn "Route certificates on *.${domain} are not publicly trusted: set KEYCLOAK_CA_FILE to the CA that signs them before make user-auth (see guides/user-authentication.md)"
+        warn "Route certificates on *.${domain} are not publicly trusted: set KEYCLOAK_CA_FILE to the CA that signs them before make user-auth (see install/02-user-auth.md)"
     fi
 fi
 
