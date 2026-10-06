@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 # Checks that a cluster is ready for OpenShell before anything is installed.
-# Usage: ./scripts/preflight.sh [--token-exchange]
+# Usage: ./scripts/preflight.sh [--token-exchange] [--user-auth]
 #   --token-exchange  also check the prerequisites of guides/spiffe-token-exchange-keycloak.md
+#   --user-auth       also check guides/user-authentication.md (implies --token-exchange)
 # Exits non-zero if a required check fails. Warnings do not fail the run.
 set -uo pipefail
 
-TOKEN_EXCHANGE=false
-[[ "${1:-}" == "--token-exchange" ]] && TOKEN_EXCHANGE=true
+TOKEN_EXCHANGE=false; USER_AUTH=false
+for arg in "$@"; do
+    case "${arg}" in
+        --token-exchange) TOKEN_EXCHANGE=true ;;
+        --user-auth) TOKEN_EXCHANGE=true; USER_AUTH=true ;;
+        *) echo "unknown option ${arg}" >&2; exit 2 ;;
+    esac
+done
 
 failures=0
 if [[ -t 1 ]]; then G='\033[0;32m' Y='\033[1;33m' R='\033[0;31m' N='\033[0m'; else G='' Y='' R='' N=''; fi
@@ -19,6 +26,11 @@ version_ge() { [[ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -1)" == "$2" ]
 echo "Tools"
 for tool in oc helm openssl; do
     command -v "$tool" >/dev/null && pass "$tool found" || fail "$tool not found on PATH"
+done
+for tool in jq curl; do   # used by the token-exchange and user-auth scripts
+    if command -v "$tool" >/dev/null; then pass "$tool found"
+    elif [[ "${TOKEN_EXCHANGE}" == true ]]; then fail "$tool not found on PATH"
+    else warn "$tool not found on PATH; the token-exchange and user-auth scripts need it"; fi
 done
 command -v openshell >/dev/null && pass "openshell CLI found" || warn "openshell CLI not found; run ./scripts/install-openshell-cli.sh"
 if ! oc whoami >/dev/null 2>&1; then
@@ -80,6 +92,16 @@ if [[ "${TOKEN_EXCHANGE}" == true ]]; then
             || warn "Red Hat build of Keycloak channel stable-v26.6 not in the catalog; SPIFFE client auth needs 26.4 or later"
     else
         warn "rhbk-operator not in the catalog; step 3 only needs registry.redhat.io pull access"
+    fi
+fi
+
+if [[ "${USER_AUTH}" == true ]]; then
+    echo "User authentication"
+    domain=$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}' 2>/dev/null)
+    if curl -s -m 10 -o /dev/null "https://console-openshift-console.${domain}/"; then
+        pass "Route certificates on *.${domain} are publicly trusted"
+    else
+        warn "Route certificates on *.${domain} are not publicly trusted: set KEYCLOAK_CA_FILE to the CA that signs them before make user-auth (see guides/user-authentication.md)"
     fi
 fi
 

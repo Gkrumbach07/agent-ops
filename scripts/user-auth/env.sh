@@ -9,6 +9,20 @@ export KEYCLOAK_HOST="${KEYCLOAK_HOST:-keycloak-${KEYCLOAK_NAMESPACE}.${APPS_DOM
 export KEYCLOAK_URL="https://${KEYCLOAK_HOST}"
 export ISSUER="${KEYCLOAK_URL}/realms/${REALM}"
 
+# Private CA. Leave empty when the cluster's Route certificates are publicly trusted (preflight
+# --user-auth tells you). Otherwise point it at the PEM of the CA that signs the Keycloak Route:
+# the gateway and oauth2-proxy get it as ConfigMap keycloak-ca, and local curl calls trust it too.
+export KEYCLOAK_CA_FILE="${KEYCLOAK_CA_FILE:-}"
+if [[ -n "${KEYCLOAK_CA_FILE}" ]]; then
+    [[ -f "${KEYCLOAK_CA_FILE}" ]] || { echo "ERROR: KEYCLOAK_CA_FILE ${KEYCLOAK_CA_FILE} not found" >&2; exit 1; }
+    for sys in /etc/ssl/cert.pem /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/certs/ca-certificates.crt; do
+        [[ -f "${sys}" ]] && break
+    done
+    export CURL_CA_BUNDLE="$(mktemp)"   # system roots plus the private CA, so other public endpoints still verify
+    cat "${sys}" "${KEYCLOAK_CA_FILE}" > "${CURL_CA_BUNDLE}"
+    export SSL_CERT_FILE="${CURL_CA_BUNDLE}"   # the openshell CLI reads it for its own Keycloak calls
+fi
+
 # Everything below is per gateway, so several gateways can share one realm without a token for
 # one being accepted by another (separate audience, separate role namespace, separate groups).
 export API_CLIENT="${API_CLIENT:-openshell-api-${NAMESPACE}}"      # audience and role namespace

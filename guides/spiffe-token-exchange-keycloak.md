@@ -2,8 +2,8 @@
 
 > **Midstream Documentation**
 >
-> Validated end to end on OpenShift 4.20.27. Several components are Technology
-> Preview. Do not use in production.
+> Validated end to end; versions in [What was validated](../README.md#what-was-validated-and-its-support-status).
+> Several components are Technology Preview. Do not use in production.
 
 > [!IMPORTANT]
 > OpenShell runs on Red Hat product-built images (`quay.io/opendatahub/odh-openshell-*:v0.1.2-rhaiv.5`);
@@ -29,6 +29,15 @@ Six scripts set this up. Each is safe to re-run. To run them all at once:
 ```shell
 make token-exchange   # preflight, then steps 0 to 5 (about 4 minutes)
 make try-it           # step 6
+```
+
+After [User authentication](user-authentication.md) (`make user-auth`), both flows share one Keycloak issuer, its HTTPS Route, and the gateway refuses anonymous callers. Run the demo with the admin CLI entry:
+
+```shell
+export OPENSHELL_GATEWAY=<namespace>   # the CLI entry make user-auth registers
+export OPENSHELL_OIDC_CLIENT_SECRET="$(oc -n <namespace> get secret openshell-automation-oidc -o jsonpath='{.data.client-secret}' | base64 -d)"
+openshell gateway login "$OPENSHELL_GATEWAY"
+make try-it
 ```
 
 The rest of this page walks through the steps one at a time.

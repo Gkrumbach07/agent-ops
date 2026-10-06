@@ -2,8 +2,9 @@
 
 > **Midstream Documentation**
 >
-> Validated end to end on OpenShift 4.20.27 with the `v0.1.2-rhaiv.5` images, Red Hat build of
-> Keycloak 26.6.7 (dev mode), oauth2-proxy v7.15.5 and dashboard 1.2.0 on 2026-10-06. Do not use in production.
+> Validated end to end on 2026-10-06, with publicly trusted and with private-CA Route certificates.
+> Versions: [What was validated](../README.md#what-was-validated-and-its-support-status). Keycloak runs in
+> dev mode here. Do not use in production.
 
 The getting-started guide runs the gateway with `allowUnauthenticatedUsers=true`: every caller is a trusted local developer, and the dashboard treats every visitor as a platform admin. This guide turns on real logins and makes **Keycloak groups the only thing an administrator manages**: put a person in a group and they can sign in and use that workspace; take them out and they lose it.
 
@@ -33,9 +34,20 @@ openshell-<ns>-ws-<workspace>-admins-> gateway user + admin of <workspace>
                                                     gateway checks: issuer, audience, role, membership
 ```
 
-## Set it up
+## Before you start
 
-After `make token-exchange` (or at least `make deploy` plus Keycloak):
+- `make token-exchange` has run: it deploys Keycloak and the realm that this guide extends. See [Let agents call your APIs as the user](spiffe-token-exchange-keycloak.md).
+- `jq` and `curl` are installed locally. The other requirements are in the [README](../README.md#requirements).
+- Run `./scripts/preflight.sh --user-auth`. It checks the above and whether the cluster's Route certificates are publicly trusted.
+- **Private CA.** If preflight warns that Route certificates are not publicly trusted, save the CA that signs them as a PEM file and export `KEYCLOAK_CA_FILE` before every user-auth command. The gateway and oauth2-proxy then trust it through ConfigMap `keycloak-ca`, and the local scripts and CLI trust it too:
+
+  ```shell
+  export KEYCLOAK_CA_FILE=$PWD/ingress-ca.pem
+  ```
+
+- Pods must be able to reach the cluster's `*.apps` Routes: the gateway and oauth2-proxy call Keycloak through its Route. Sandboxes and the token-exchange demo use Keycloak's Service directly.
+
+## Set it up
 
 ```shell
 make user-auth          # Keycloak over HTTPS, realm, gateway OIDC, dashboard login, sync, then the checks
@@ -85,6 +97,19 @@ The user's experience: open the dashboard link and sign in with their account; f
 - **Revocation is immediate inside OpenShell.** Removing the membership denies the workspace at once; the role in an already-issued token lasts until it expires (5 minutes by default).
 - **The mTLS client bundle no longer signs anyone in** once OIDC is on (`missing authorization header`); it only protects the connection.
 - Secrets live only in Kubernetes Secrets and are never printed by the scripts.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Gateway pod crash-loops with `OIDC initialization failed: OIDC discovery request failed` | The gateway cannot verify Keycloak's Route certificate (private CA) or cannot reach the Route | Set `KEYCLOAK_CA_FILE` and re-run `make user-auth`; check that pods can reach `*.apps` Routes |
+| A fix to the gateway configuration is not picked up | Kubernetes does not replace a StatefulSet pod that is not Ready | `deploy-openshell.sh` deletes the stuck pod for you; manually: `oc -n <ns> delete pod openshell-0` |
+| Signed in, but every call says `not a member of workspace` | The user has the gateway role but no workspace group | `make grant MEMBER=<user> WS=<workspace>` |
+| Signed in to the dashboard, then `403 Forbidden` from the proxy | The user is in none of this gateway's groups | `make grant ...`; the proxy only admits this gateway's `admin` and `user` roles |
+| CLI: `missing authorization header` | The CLI entry uses the mTLS bundle, which no longer signs anyone in once OIDC is on | Register an OIDC entry: `make connect-info` |
+| CLI: `OIDC token refresh failed: no refresh token available` | Service-account sessions expire after 5 minutes and the CLI does not log in again on its own | `openshell gateway login <name>` before commands |
+| `make try-it` fails after `make user-auth` | The gateway refuses anonymous callers | Run it with `OPENSHELL_GATEWAY` and `OPENSHELL_OIDC_CLIENT_SECRET` set; see the [token-exchange guide](spiffe-token-exchange-keycloak.md) |
+| Gateway logs `invalid audience` or users have no role | The login client lacks this gateway's role scope, or the user has no group | Re-run `scripts/user-auth/02-configure-realm.sh`; check the user's groups |
 
 ## Known gaps
 

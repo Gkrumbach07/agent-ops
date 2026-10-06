@@ -17,7 +17,7 @@ Unless noted otherwise, run all commands on your local machine.
 
 ## Prerequisites
 
-- You have access to a test OpenShift cluster running 4.19.35, 4.20.26, 4.21.21, 4.22.2, or later in the same minor stream (the minimum versions for the Red Hat build of Agent Sandbox). This guide was validated on OpenShift 4.20.27.
+- You have access to a test OpenShift cluster running 4.19.35, 4.20.26, 4.21.21, 4.22.2, or later in the same minor stream (the minimum versions for the Red Hat build of Agent Sandbox). Validated versions and the full list of requirements are in the [README](../README.md#requirements); run `./scripts/preflight.sh` to check them.
 - You have cluster administrator permissions.
 - You have installed the OpenShift CLI (`oc`) locally.
 - You have Helm installed locally.
@@ -96,7 +96,7 @@ from `quay.io/opendatahub`.
 Choose a database backend before installing. OpenShell supports SQLite (the default) and external PostgreSQL. Choose **one** of the two options below.
 
 > [!WARNING]
-> Both examples below set `allowUnauthenticatedUsers=true`. This bypasses user authentication and treats every API request as a trusted local developer. It is a convenience shortcut for single-user test clusters and should not be used on shared clusters.
+> Both examples below set `allowUnauthenticatedUsers=true`. This bypasses user authentication and treats every API request as a trusted local developer. It is a convenience shortcut for single-user test clusters and should not be used on shared clusters. To turn on real logins (Keycloak, roles, workspace access by group, the dashboard behind a login), follow [User authentication](user-authentication.md) after this guide (`make user-auth`).
 
 ### Option A: SQLite (default)
 
@@ -356,7 +356,7 @@ oc -n openshell port-forward svc/openshell-dashboard 8080:8080
 Open `http://localhost:8080`.
 
 > [!WARNING]
-> This manifest runs the dashboard with `AUTH_DISABLED=true`, so anyone who can reach it acts as a platform admin. Keep it behind `oc port-forward`; do not create a `Route` for it. A shared deployment needs an authenticating proxy (oauth2-proxy with the same Keycloak realm the gateway trusts) and OIDC on the gateway; see the dashboard's [Auth](https://github.com/Gkrumbach07/openshell-dashboard#auth) section. That setup has not been validated with this guide.
+> This manifest runs the dashboard with `AUTH_DISABLED=true`, so anyone who can reach it acts as a platform admin. Keep it behind `oc port-forward`; do not create a `Route` for it. For a shared deployment, `make user-auth` replaces this evaluation install with the dashboard behind an oauth2-proxy login, OIDC on the gateway and a NetworkPolicy; see [User authentication](user-authentication.md).
 
 ## Troubleshooting
 

@@ -22,6 +22,9 @@ fi
 # In-cluster by default; scripts/user-auth/env.sh switches it to the public HTTPS Route.
 export KEYCLOAK_URL="${KEYCLOAK_URL:-http://keycloak.${KEYCLOAK_NAMESPACE}.svc.cluster.local}"
 export ISSUER="${KEYCLOAK_URL}/realms/${REALM}"
+# In-cluster callers (token endpoint, JWKS) use the Service directly: no Route, no certificate trust.
+# Tokens still carry ISSUER, because Keycloak's hostname is fixed to it.
+export REALM_INTERNAL_URL="http://keycloak.${KEYCLOAK_NAMESPACE}.svc.cluster.local/realms/${REALM}"
 export GATEWAY_SPIFFE_ID="${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}"
 export SPIRE_JWKS="https://spire-spiffe-oidc-discovery-provider.openshift-ztwim.svc.cluster.local/keys"
 

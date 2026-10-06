@@ -13,6 +13,14 @@
 set -euo pipefail
 . "$(dirname "$0")/env.sh"
 
+# Private CA: oauth2-proxy trusts it in addition to the system roots (ConfigMap from step 3).
+CA_ARGS=""; CA_MOUNT=""; CA_VOLUME=""
+if [[ -n "${KEYCLOAK_CA_FILE}" ]]; then
+    CA_ARGS=$'\n            - --provider-ca-file=/etc/keycloak-ca/ca.crt\n            - --use-system-trust-store=true'
+    CA_MOUNT=$'\n          volumeMounts: [{name: keycloak-ca, mountPath: /etc/keycloak-ca, readOnly: true}]'
+    CA_VOLUME=$'\n        - name: keycloak-ca\n          configMap: {name: keycloak-ca}'
+fi
+
 DASHBOARD_IMAGE="${DASHBOARD_IMAGE:-quay.io/gkrumbach07/openshell-dashboard:1.2.0}"
 OAUTH2_PROXY_IMAGE="${OAUTH2_PROXY_IMAGE:-quay.io/oauth2-proxy/oauth2-proxy:v7.15.5}"
 
@@ -56,13 +64,13 @@ spec:
             - --cookie-secure=true
             - --cookie-samesite=lax
             - --cookie-name=_openshell_${NAMESPACE}
-            - --cookie-refresh=4m
+            - --cookie-refresh=4m${CA_ARGS}
           env:
             - name: OAUTH2_PROXY_CLIENT_SECRET
               valueFrom: {secretKeyRef: {name: openshell-dashboard-oidc, key: client-secret}}
             - name: OAUTH2_PROXY_COOKIE_SECRET
               valueFrom: {secretKeyRef: {name: openshell-dashboard-oidc, key: cookie-secret}}
-          ports: [{containerPort: 4180, name: http}]
+          ports: [{containerPort: 4180, name: http}]${CA_MOUNT}
           readinessProbe: {httpGet: {path: /ping, port: 4180}, periodSeconds: 5}
           securityContext: &restricted
             allowPrivilegeEscalation: false
@@ -81,7 +89,7 @@ spec:
           securityContext: *restricted
       volumes:
         - name: gateway-ca
-          secret: {secretName: openshell-client-tls, items: [{key: ca.crt, path: ca.crt}]}
+          secret: {secretName: openshell-client-tls, items: [{key: ca.crt, path: ca.crt}]}${CA_VOLUME}
 ---
 apiVersion: v1
 kind: Service

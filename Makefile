@@ -68,3 +68,6 @@ sync-members: ## Make workspace membership match Keycloak groups (DRY_RUN=true t
 
 connect-info: ## Print the dashboard link and the one CLI command to send a new user
 	@$(UA)/connect-info.sh
+
+byo-agent: ## Build examples/byo-agent on the cluster and run it in a sandbox (see guides/bring-your-own-agent-image.md)
+	@./scripts/byo-agent.sh

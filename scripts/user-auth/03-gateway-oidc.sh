@@ -9,9 +9,24 @@ set -euo pipefail
 . "$(dirname "$0")/env.sh"
 ROOT="$(dirname "$0")/.."
 
+ca_cm=""
+if [[ -n "${KEYCLOAK_CA_FILE}" ]]; then
+    # The chart hands this file to the gateway as SSL_CERT_FILE, which replaces every trust root
+    # the gateway has, not only the issuer's. Include the OpenShift service CA so the gateway
+    # still trusts in-cluster services (for example the SPIRE OIDC discovery provider).
+    bundle=$(mktemp)
+    cat "${KEYCLOAK_CA_FILE}" > "${bundle}"
+    oc -n "${NAMESPACE}" get configmap openshift-service-ca.crt -o jsonpath='{.data.service-ca\.crt}' >> "${bundle}"
+    oc -n "${NAMESPACE}" create configmap keycloak-ca --from-file=ca.crt="${bundle}" \
+        --dry-run=client -o yaml | oc apply -f - >/dev/null
+    rm -f "${bundle}"
+    ca_cm=keycloak-ca
+    log "gateway and dashboard proxy will trust the CA in ConfigMap keycloak-ca"
+fi
+
 OPENSHELL_OIDC_ISSUER="${ISSUER}" OPENSHELL_OIDC_AUDIENCE="${GATEWAY_AUDIENCE}" \
     OPENSHELL_OIDC_ROLES_CLAIM="${ROLES_CLAIM}" OPENSHELL_OIDC_ADMIN_ROLE=admin OPENSHELL_OIDC_USER_ROLE=user \
-    OPENSHELL_ENABLE_SPIFFE=true "${ROOT}/deploy-openshell.sh"
+    OPENSHELL_OIDC_CA_CONFIGMAP="${ca_cm}" OPENSHELL_ENABLE_SPIFFE=true "${ROOT}/deploy-openshell.sh"
 if oc -n "${NAMESPACE}" get deploy/keycloak-registrar >/dev/null 2>&1; then
     "${ROOT}/token-exchange/05-deploy-registrar.sh"
 fi

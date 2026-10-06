@@ -30,6 +30,8 @@ OIDC_AUDIENCE="${OPENSHELL_OIDC_AUDIENCE:-openshell-gateway}"
 OIDC_ROLES_CLAIM="${OPENSHELL_OIDC_ROLES_CLAIM:-realm_access.roles}"
 OIDC_ADMIN_ROLE="${OPENSHELL_OIDC_ADMIN_ROLE:-openshell-admin}"
 OIDC_USER_ROLE="${OPENSHELL_OIDC_USER_ROLE:-openshell-user}"
+# ConfigMap (key ca.crt) with the CA that signs the issuer, when it is not publicly trusted.
+OIDC_CA_CONFIGMAP="${OPENSHELL_OIDC_CA_CONFIGMAP:-}"
 
 # Validate inputs to prevent injection attacks
 if [[ ! "$NAMESPACE" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
@@ -69,6 +71,10 @@ fi
 
 if [[ -n "$OIDC_ISSUER" && ! "$OIDC_ISSUER" =~ ^https://[A-Za-z0-9.:/_-]+$ ]]; then
     echo "ERROR: OPENSHELL_OIDC_ISSUER must be an https:// URL (the gateway rejects HTTP issuers)." >&2
+    exit 1
+fi
+if [[ -n "$OIDC_CA_CONFIGMAP" && ! "$OIDC_CA_CONFIGMAP" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
+    echo "ERROR: Invalid OPENSHELL_OIDC_CA_CONFIGMAP." >&2
     exit 1
 fi
 for v in "$OIDC_AUDIENCE" "$OIDC_ROLES_CLAIM" "$OIDC_ADMIN_ROLE" "$OIDC_USER_ROLE"; do
@@ -215,6 +221,7 @@ install_helm() {
             --set server.oidc.adminRole="${OIDC_ADMIN_ROLE}"
             --set server.oidc.userRole="${OIDC_USER_ROLE}"
         )
+        [[ -n "${OIDC_CA_CONFIGMAP}" ]] && helm_args+=(--set server.oidc.caConfigMapName="${OIDC_CA_CONFIGMAP}")
     else
         helm_args+=(--set server.auth.allowUnauthenticatedUsers=true)
     fi
@@ -254,6 +261,17 @@ install_helm() {
 # Wait for deployment
 wait_for_deployment() {
     log_step "Waiting for OpenShell to be ready..."
+
+    # A StatefulSet does not replace a pod that is not Ready, so a gateway crash-looping on the
+    # previous configuration (for example an unreachable OIDC issuer) would never pick up the fix.
+    local pod_rev update_rev ready
+    pod_rev=$(oc -n "${NAMESPACE}" get pod openshell-0 -o jsonpath='{.metadata.labels.controller-revision-hash}' 2>/dev/null || true)
+    update_rev=$(oc -n "${NAMESPACE}" get statefulset openshell -o jsonpath='{.status.updateRevision}' 2>/dev/null || true)
+    ready=$(oc -n "${NAMESPACE}" get pod openshell-0 -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || true)
+    if [[ -n "${pod_rev}" && "${pod_rev}" != "${update_rev}" && "${ready}" != "true" ]]; then
+        log_warn "Gateway pod is failing on the previous configuration; replacing it with the new one."
+        oc -n "${NAMESPACE}" delete pod openshell-0 --wait=false
+    fi
 
     oc -n "${NAMESPACE}" rollout status statefulset/openshell --timeout=300s
 

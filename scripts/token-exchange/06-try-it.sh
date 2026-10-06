@@ -22,7 +22,7 @@ data:
     import json, os, jwt
     from http.server import BaseHTTPRequestHandler, HTTPServer
     ISSUER = os.environ["ISSUER"]; AUDIENCE = os.environ["AUDIENCE"]
-    JWKS = jwt.PyJWKClient(ISSUER + "/protocol/openid-connect/certs")
+    JWKS = jwt.PyJWKClient(os.environ["JWKS_URL"])
     class H(BaseHTTPRequestHandler):
         def do_GET(self):
             auth = self.headers.get("Authorization", "")
@@ -56,6 +56,7 @@ spec:
           env:
             - {name: ISSUER, value: "${ISSUER}"}
             - {name: AUDIENCE, value: "${TARGET_API}"}
+            - {name: JWKS_URL, value: "${REALM_INTERNAL_URL}/protocol/openid-connect/certs"}
           ports: [{containerPort: 8080}]
           volumeMounts: [{name: app, mountPath: /app}]
       volumes: [{name: app, configMap: {name: ${TARGET_API}}}]
@@ -90,7 +91,7 @@ credentials:
     header_name: Authorization
     token_grant:
       grant_type: token_exchange
-      token_endpoint: ${ISSUER}/protocol/openid-connect/token
+      token_endpoint: ${REALM_INTERNAL_URL}/protocol/openid-connect/token
       audience: ${TARGET_API}
       jwt_svid_audience: ${ISSUER}
       client_assertion_type: urn:ietf:params:oauth:client-assertion-type:jwt-spiffe
@@ -111,7 +112,7 @@ openshell profile import -f "${work}/profile.yaml" >/dev/null
 
 log "creating provider ${PROVIDER} with ${DEMO_USER}'s token"
 demo_pw="$(oc -n "${NAMESPACE}" get secret keycloak-demo-user -o jsonpath='{.data.password}' | base64 -d)"
-user_token="$(oc -n "${NAMESPACE}" exec deploy/"${TARGET_API}" -- curl -fsS "${ISSUER}/protocol/openid-connect/token" \
+user_token="$(oc -n "${NAMESPACE}" exec deploy/"${TARGET_API}" -- curl -fsS "${REALM_INTERNAL_URL}/protocol/openid-connect/token" \
     -d grant_type=password -d client_id=openshell-user -d username="${DEMO_USER}" \
     --data-urlencode "password=${demo_pw}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
 openshell provider create --name "${PROVIDER}" --type "${PROFILE_ID}" \
