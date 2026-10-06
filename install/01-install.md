@@ -14,6 +14,10 @@ Install OpenShell on an OpenShift cluster, expose the gateway through a `Route`,
 
 New to OpenShell? Read [How OpenShell Works](https://docs.nvidia.com/openshell/latest/about/how-it-works) first for a quick tour of the architecture: the CLI, the gateway, and the supervisor.
 
+This guide sets up the pieces marked ① below. The later steps add the rest.
+
+![What agent-ops sets up for OpenShell with OpenShift AI](images/setup-architecture.png)
+
 Unless noted otherwise, run all commands on your local machine.
 
 ## Prerequisites

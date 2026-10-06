@@ -90,6 +90,8 @@ this stack. Status as of 2026-10-06.
 | Agent identity (token exchange) fails when Keycloak's Route uses a private CA (`KEYCLOAK_CA_FILE`): the gateway returns `FAILED_PRECONDITION` | None yet; user login works with a private CA. See [agent identity](install/03-agent-identity.md#known-limitations) |
 | CLI service-account sessions expire after 5 minutes and the CLI tries to refresh instead of logging in again (CLI `0.1.3-dev`) | Run `openshell gateway login <name>` before commands; the scripts do this |
 
+Many of these, and several setup steps, are workarounds for missing product pieces. [Workarounds and what removes them](reference/workarounds.md) lists each one with the upstream issue or Jira that tracks the fix, or says that one is needed.
+
 ## Images used in this repository
 
 | Image | Default in this repository | Replace with |
@@ -102,7 +104,11 @@ this stack. Status as of 2026-10-06.
 
 ## Set up OpenShell on OpenShift
 
-The platform track, in order. Each step has a `make` target and builds on the previous ones; steps 2 to 5 are independent of each other.
+The platform track. Each step has a `make` target and needs step 1. Step 2 extends the Keycloak that step 3 deploys, so run `make token-exchange` before `make user-auth`. Steps 4 and 5 are independent.
+
+![What agent-ops sets up for OpenShell with OpenShift AI: operators, the OpenShell gateway, Keycloak, the dashboard, sandboxes, and the keycloak-registrar interceptor. Circled numbers map to the steps below.](install/images/setup-architecture.png)
+
+The circled numbers map to the steps below. Source: [`install/images/setup-architecture.drawio`](install/images/setup-architecture.drawio).
 
 | Step | Guide | What you get | `make` |
 |---|---|---|---|
@@ -125,5 +131,6 @@ Each demo assumes step 1 and says what else it needs.
 
 ## Reference
 
+- [Workarounds and what removes them](reference/workarounds.md): each workaround in this repository, the fix that removes it, and its tracking issue
 - [Known issue: ZTWIM 1.1.1 OIDC discovery provider](reference/known-issues/ztwim-oidc-discovery-provider.md)
 - [OpenShell capability testing and security analysis](reference/scc-requirements.md): historical results for OpenShell v0.0.85; since 0.1.0 OpenShell runs under `restricted-v2` without added capabilities
