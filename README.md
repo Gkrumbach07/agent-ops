@@ -87,6 +87,7 @@ this stack. Status as of 2026-10-06.
 | `helm upgrade` resets the gateway's interceptor registration | `make token-exchange` re-registers it; or re-run step 5 |
 | Stored user tokens stop working when the user's Keycloak session expires | Step 4 sets a 10-hour session; refresh with `openshell provider update` |
 | With OIDC on, the CLI's mTLS client bundle no longer signs anyone in (`missing authorization header`) | Use an OIDC CLI entry: `make connect-info` for people, the `<namespace>` entry for scripts |
+| Agent identity (token exchange) fails when Keycloak's Route uses a private CA (`KEYCLOAK_CA_FILE`): the gateway returns `FAILED_PRECONDITION` | None yet; user login works with a private CA. See [agent identity](install/03-agent-identity.md#known-limitations) |
 | CLI service-account sessions expire after 5 minutes and the CLI tries to refresh instead of logging in again (CLI `0.1.3-dev`) | Run `openshell gateway login <name>` before commands; the scripts do this |
 
 ## Images used in this repository

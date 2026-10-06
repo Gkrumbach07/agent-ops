@@ -11,6 +11,8 @@ log() { echo -e "\033[0;32m[byo-agent]\033[0m $*"; }
 
 oc -n "${NAMESPACE}" get bc "${NAME}" >/dev/null 2>&1 || \
     oc -n "${NAMESPACE}" new-build --binary --strategy=docker --name "${NAME}" >/dev/null
+# The example uses Containerfile; OpenShift's docker strategy looks for Dockerfile by default.
+oc -n "${NAMESPACE}" patch bc "${NAME}" --type=merge -p '{"spec":{"strategy":{"dockerStrategy":{"dockerfilePath":"Containerfile"}}}}' >/dev/null
 log "building the image on the cluster"
 oc -n "${NAMESPACE}" start-build "${NAME}" --from-dir "${ROOT}/examples/byo-agent" --follow --wait >/dev/null
 image="image-registry.openshift-image-registry.svc:5000/${NAMESPACE}/${NAME}:latest"

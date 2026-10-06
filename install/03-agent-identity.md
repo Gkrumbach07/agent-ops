@@ -190,3 +190,4 @@ allowed to call them. Do not set `tls: none`; current OpenShell rejects it.
 - Keycloak's SPIFFE support and the Red Hat build of Agent Sandbox are Technology
   Preview.
 - The interceptor is not yet part of OpenShell or a Red Hat product.
+- **Private-CA Keycloak.** With user authentication on and `KEYCLOAK_CA_FILE` set (the gateway configured with `server.oidc.caConfigMapName`), the token exchange fails: the gateway's `ExchangeProviderSubjectToken` returns `FAILED_PRECONDITION` and the supervisor answers the agent with 502. Observed on 2026-10-06 with `v0.1.2-rhaiv.5`; the same flow works when Route certificates are publicly trusted. Cause not yet identified.
