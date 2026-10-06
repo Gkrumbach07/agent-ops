@@ -51,7 +51,20 @@ user-auth: ## Turn on user login: Keycloak over HTTPS, OIDC on the gateway, dash
 	@$(UA)/02-configure-realm.sh
 	@$(UA)/03-gateway-oidc.sh
 	@$(UA)/04-dashboard-login.sh
+	@$(UA)/05-sync-members.sh
 	@$(UA)/verify.sh
 
 verify-user-auth: ## Check user login end to end (gateway, roles, workspace membership, dashboard browser login)
 	@$(UA)/verify.sh
+
+grant: ## Give a user a workspace: make grant MEMBER=alice WS=team-a [ROLE=user|admin]
+	@$(UA)/grant.sh "$(MEMBER)" "$(WS)" "$(or $(ROLE),user)"
+
+revoke: ## Take a workspace away: make revoke MEMBER=alice [WS=team-a] (no WS: every workspace)
+	@$(UA)/revoke.sh "$(MEMBER)" $(WS)
+
+sync-members: ## Make workspace membership match Keycloak groups (DRY_RUN=true to preview)
+	@$(UA)/05-sync-members.sh
+
+connect-info: ## Print the dashboard link and the one CLI command to send a new user
+	@$(UA)/connect-info.sh

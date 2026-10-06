@@ -6,8 +6,10 @@
 # oauth2-proxy signs the user in at Keycloak (client openshell-dashboard), keeps the session in a
 # cookie, refreshes the access token before it expires, and forwards it to the BFF in
 # X-Forwarded-Access-Token. The BFF relays that token to the gateway, which decides what the user
-# may do. The BFF listens on loopback, so nothing reaches it except through the proxy, and it gets
-# only the gateway CA: no client certificate, so it cannot act as anyone but the signed-in user.
+# may do. The proxy also refuses users without this gateway's admin or user role, so a person from
+# another gateway's groups never reaches the dashboard. The BFF listens on loopback, a NetworkPolicy
+# admits only the OpenShift router to the proxy, and the BFF gets only the gateway CA: no client
+# certificate, so it cannot act as anyone but the signed-in user.
 set -euo pipefail
 . "$(dirname "$0")/env.sh"
 
@@ -35,9 +37,11 @@ spec:
         - name: oauth2-proxy
           image: ${OAUTH2_PROXY_IMAGE}
           args:
-            - --provider=oidc
+            - --provider=keycloak-oidc
             - --oidc-issuer-url=${ISSUER}
-            - --client-id=openshell-dashboard
+            - --client-id=${DASHBOARD_CLIENT}
+            - --allowed-role=${API_CLIENT}:admin
+            - --allowed-role=${API_CLIENT}:user
             - --redirect-url=https://${DASHBOARD_HOST}/oauth2/callback
             - --upstream=http://127.0.0.1:8080/
             - --http-address=0.0.0.0:4180
@@ -50,6 +54,8 @@ spec:
             - --skip-provider-button=true
             - --api-route=^/api/
             - --cookie-secure=true
+            - --cookie-samesite=lax
+            - --cookie-name=_openshell_${NAMESPACE}
             - --cookie-refresh=4m
           env:
             - name: OAUTH2_PROXY_CLIENT_SECRET
@@ -70,7 +76,7 @@ spec:
             - {name: OPENSHELL_GATEWAY_URL, value: "https://openshell.${NAMESPACE}.svc:8080"}
             - {name: GATEWAY_CA_CERT, value: /etc/openshell/gateway-ca/ca.crt}
             - {name: AUTH_USER_HEADER, value: x-forwarded-user}
-            - {name: ADMIN_ROLE, value: openshell-admin}
+            - {name: ADMIN_ROLE, value: admin}
           volumeMounts: [{name: gateway-ca, mountPath: /etc/openshell/gateway-ca, readOnly: true}]
           securityContext: *restricted
       volumes:
@@ -92,6 +98,19 @@ spec:
   to: {kind: Service, name: openshell-dashboard}
   port: {targetPort: http}
   tls: {termination: edge, insecureEdgeTerminationPolicy: Redirect}
+---
+# Only the OpenShift router may open connections to the dashboard pod (the proxy port).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: openshell-dashboard}
+spec:
+  podSelector: {matchLabels: {app: openshell-dashboard}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {policy-group.network.openshift.io/ingress: ""}
+      ports: [{port: 4180, protocol: TCP}]
 EOF
 oc -n "${NAMESPACE}" rollout status deploy/openshell-dashboard --timeout=180s
-log "dashboard: https://${DASHBOARD_HOST} (sign in as ${DEMO_USER} or platform-admin)"
+log "dashboard: https://${DASHBOARD_HOST} (users need a group: grant.sh <user> <workspace>)"
