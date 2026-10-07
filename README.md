@@ -112,7 +112,7 @@ The circled numbers map to the steps below. Source: [`install/images/setup-archi
 | Step | Guide | What you get | `make` |
 |---|---|---|---|
 | 1 | [Install OpenShell on OpenShift](install/01-install.md) | Gateway on the product images, Route, CLI connected, a first sandbox; optional dashboard | `deploy` |
-| 2 | [User authentication](install/02-user-auth.md) | People log in with Keycloak; access managed by groups; dashboard behind a login | `user-auth`, `grant`, `revoke`, `connect-info` |
+| 2 | [User authentication](install/02-user-auth.md)<br>By hand: [with your own Keycloak](install/02-user-auth-keycloak.md), [workspaces and membership](install/02-user-auth-workspaces.md) | People log in with Keycloak; access managed by groups; dashboard behind a login | `user-auth`, `grant`, `revoke`, `connect-info` |
 | 3 | [Agent identity: call your APIs as the user](install/03-agent-identity.md) | Each sandbox gets its own SPIFFE identity; the user's token is exchanged outside the sandbox (keycloak-registrar interceptor) | `token-exchange`, `try-it` |
 | 4 | [Bring your own agent image](install/04-agent-images.md) | What an agent image needs and a `ubi9/ubi-minimal` example | `byo-agent` |
 | 5 | [Kata runtime](install/05-kata-runtime.md) (optional) | Sandboxes in a Kata VM through a `RuntimeClass` (not re-validated with the current build) | |
