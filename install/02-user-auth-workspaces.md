@@ -2,10 +2,11 @@
 
 > **Midstream Documentation**
 >
-> The Keycloak path matches what [`make user-auth`](02-user-auth.md) automates and was validated with
-> it. The Microsoft Entra ID path has not been tested with OpenShell yet; it is included because Entra
-> subjects behave differently and are easy to get wrong. Confirm commands against the OpenShell
-> release you run.
+> The Keycloak commands were run on 2026-10-07 against the Red Hat build `v0.1.2-rhaiv.5` with CLI
+> 0.1.2, after the [Keycloak guide](02-user-auth-keycloak.md): named workspace, membership add, list
+> and remove, delegation, and the denials in the negative tests. The Microsoft Entra ID path has not
+> been tested with OpenShell yet; it is included because Entra subjects behave differently and are
+> easy to get wrong. Confirm commands against the OpenShell release you run.
 
 Use this guide after the OpenShell gateways and dashboards are deployed with OIDC, either by hand ([User authentication with your own Keycloak](02-user-auth-keycloak.md)) or with the scripts ([User authentication](02-user-auth.md)). It creates logical workspaces, resolves each user's validated OpenShell subject through directory lookup, controlled enrollment, or a verification fallback, and verifies that gateway roles and workspace membership enforce the intended access.
 
@@ -124,6 +125,8 @@ openshell --gateway namespace-a workspace get team-a
 
 ### Add Mary and Cameron
 
+The dashboard's workspace **Members** page does the same as these commands; it takes the subject and the role.
+
 ```shell
 openshell --gateway namespace-a workspace member add \
   --workspace team-a \
@@ -153,7 +156,7 @@ openshell --gateway namespace-b workspace member add \
 
 ## Delegate workspace administration
 
-A Platform Admin can grant one user the Workspace Admin membership. That user still needs the gateway user role in the OIDC token. The delegated administrator can manage ordinary members and workspace resources but cannot create workspaces or grant another admin membership.
+A Platform Admin can grant one user the Workspace Admin membership. That user still needs the gateway user role in the OIDC token. The delegated administrator can manage ordinary members and workspace resources but cannot create workspaces (`role 'administrators-a' required`) or grant another admin membership (`only platform admins can assign the workspace admin role`).
 
 ```shell
 openshell --gateway namespace-a workspace member add \
