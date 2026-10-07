@@ -1,10 +1,11 @@
 # ZTWIM 1.1.1: SPIRE OIDC discovery provider never becomes ready
 
-**Status:** workaround available (`scripts/token-exchange/01-fix-ztwim-oidc.sh`). Not yet
-reported to the Zero Trust Workload Identity Manager team; no matching issue found in the
-SPIRE Jira project as of 2026-10-02. This page is written so it can be filed as a bug.
+**Status:** reported to the Zero Trust Workload Identity Manager team as [OCPBUGS-129473](https://redhat.atlassian.net/browse/OCPBUGS-129473) (2026-10-07).
+Workaround: install ZTWIM into its suggested namespace, or run `scripts/token-exchange/01-fix-ztwim-oidc.sh`.
 
 ## Summary
+
+**Scope (verified 2026-10-07):** this only happens when the operator is installed into a namespace whose name starts with `openshift-`. The operator's suggested namespace is `zero-trust-workload-identity-manager`, which is not affected. On our test cluster the operator had been installed into `openshift-ztwim`. If you install ZTWIM into its suggested namespace, you do not need the workaround below.
 
 With Zero Trust Workload Identity Manager (ZTWIM) 1.1.1, the SPIRE OIDC discovery provider
 pod never receives a SPIFFE identity and crash-loops indefinitely. The operator-generated
@@ -29,7 +30,7 @@ creates for the OIDC discovery provider therefore never selects its pod.
 | Item | Value |
 |---|---|
 | OpenShift | 4.20.27 |
-| ZTWIM operator | `zero-trust-workload-identity-manager.v1.1.1`, channel `stable-v1` |
+| ZTWIM operator | `zero-trust-workload-identity-manager.v1.1.1`, channel `stable-v1`, installed into `openshift-ztwim` (not the suggested `zero-trust-workload-identity-manager`) |
 | SPIRE controller-manager | 0.6.4 |
 | SPIRE OIDC discovery provider | 1.14.7 |
 | `ZeroTrustWorkloadIdentityManager` spec | only `trustDomain`, `clusterName`, `bundleConfigMap` set (defaults otherwise) |
@@ -80,7 +81,7 @@ and restarts.
 
 ## Steps to reproduce
 
-1. Install ZTWIM 1.1.1 from the Software Catalog (channel `stable-v1`).
+1. Install ZTWIM 1.1.1 from the Software Catalog (channel `stable-v1`) into a namespace named `openshift-<anything>` instead of the suggested `zero-trust-workload-identity-manager`.
 2. Create `ZeroTrustWorkloadIdentityManager`, `SpireServer`, `SpireAgent`, `SpiffeCSIDriver`,
    and `SpireOIDCDiscoveryProvider` CRs with defaults.
 3. Observe the OIDC discovery provider pod in `CrashLoopBackOff` and the ClusterSPIFFEID

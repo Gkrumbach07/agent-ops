@@ -83,12 +83,12 @@ this stack. Status as of 2026-10-06.
 | Issue | Workaround |
 |---|---|
 | RHCOS kernels before 5.19 (OpenShift 4.x, RHCOS 9): Python HTTPS fails, and servers that read the peer address on `accept()` fail ([OpenShell #4058](https://github.com/NVIDIA/OpenShell/issues/4058)). **Fixed upstream by [#4150](https://github.com/NVIDIA/OpenShell/pull/4150)** (merged 2026-10-06), verified on RHCOS 5.14 with `odh-stable`; not yet in a versioned Red Hat build | Python shim in the [install guide](install/01-install.md#known-limitations) until a build after `v0.1.2-rhaiv.5` ships the fix |
-| [ZTWIM 1.1.1 OIDC discovery provider never becomes ready](reference/known-issues/ztwim-oidc-discovery-provider.md) | `scripts/token-exchange/01-fix-ztwim-oidc.sh` |
+| [ZTWIM 1.1.1 OIDC discovery provider never becomes ready](reference/known-issues/ztwim-oidc-discovery-provider.md) when the operator is installed into an `openshift-*` namespace | Install ZTWIM into its suggested namespace, `zero-trust-workload-identity-manager`; otherwise `scripts/token-exchange/01-fix-ztwim-oidc.sh` |
 | `helm upgrade` resets the gateway's interceptor registration | `make token-exchange` re-registers it; or re-run step 5 |
 | Stored user tokens stop working when the user's Keycloak session expires | Step 4 sets a 10-hour session; refresh with `openshell provider update` |
 | With OIDC on, the CLI's mTLS client bundle no longer signs anyone in (`missing authorization header`) | Use an OIDC CLI entry: `make connect-info` for people, the `<namespace>` entry for scripts |
 | Agent identity (token exchange) fails when Keycloak's Route uses a private CA (`KEYCLOAK_CA_FILE`): the gateway returns `FAILED_PRECONDITION` | None yet; user login works with a private CA. See [agent identity](install/03-agent-identity.md#known-limitations) |
-| CLI service-account sessions expire after 5 minutes and the CLI tries to refresh instead of logging in again (CLI `0.1.3-dev`) | Run `openshell gateway login <name>` before commands; the scripts do this |
+| CLI service-account sessions expire after 5 minutes and the CLI tries to refresh instead of logging in again (CLI `0.1.3-dev`) | Run `openshell gateway login <name>` before commands; the scripts do this. Tracked upstream: [NVIDIA/OpenShell#4287](https://github.com/NVIDIA/OpenShell/issues/4287) |
 
 Many of these, and several setup steps, are workarounds for missing product pieces. [Workarounds and what removes them](reference/workarounds.md) lists each one with the upstream issue or Jira that tracks the fix, or says that one is needed.
 

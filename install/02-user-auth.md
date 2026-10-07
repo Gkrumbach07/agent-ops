@@ -107,7 +107,7 @@ The user's experience: open the dashboard link and sign in with their account; f
 | Signed in, but every call says `not a member of workspace` | The user has the gateway role but no workspace group | `make grant MEMBER=<user> WS=<workspace>` |
 | Signed in to the dashboard, then `403 Forbidden` from the proxy | The user is in none of this gateway's groups | `make grant ...`; the proxy only admits this gateway's `admin` and `user` roles |
 | CLI: `missing authorization header` | The CLI entry uses the mTLS bundle, which no longer signs anyone in once OIDC is on | Register an OIDC entry: `make connect-info` |
-| CLI: `OIDC token refresh failed: no refresh token available` | Service-account sessions expire after 5 minutes and the CLI does not log in again on its own | `openshell gateway login <name>` before commands |
+| CLI: `OIDC token refresh failed: no refresh token available` | Service-account sessions expire after 5 minutes and the CLI does not log in again on its own | `openshell gateway login <name>` before commands ([NVIDIA/OpenShell#4287](https://github.com/NVIDIA/OpenShell/issues/4287)) |
 | `make try-it` fails after `make user-auth` | The gateway refuses anonymous callers | Run it with `OPENSHELL_GATEWAY` and `OPENSHELL_OIDC_CLIENT_SECRET` set; see the [token-exchange guide](03-agent-identity.md) |
 | Gateway logs `invalid audience` or users have no role | The login client lacks this gateway's role scope, or the user has no group | Re-run `scripts/user-auth/02-configure-realm.sh`; check the user's groups |
 
@@ -115,9 +115,9 @@ The user's experience: open the dashboard link and sign in with their account; f
 
 | Gap | Status |
 |---|---|
-| Workspace membership has no native group mapping; the sync bridges it | Upstream RFE candidate. Until then run the sync after group changes (or on a schedule) |
+| Workspace membership has no native group mapping; the sync bridges it | Filed upstream as [NVIDIA/OpenShell#4286](https://github.com/NVIDIA/OpenShell/issues/4286) (workspace group bindings). Until then run the sync after group changes (or on a schedule) |
 | Keycloak runs in dev mode; realm and users are lost on restart | Use the RHBK operator with a database for anything shared |
 | oauth2-proxy and the dashboard are not product images yet | `quay.io/oauth2-proxy/oauth2-proxy`, `quay.io/gkrumbach07/openshell-dashboard:1.2.0`; ODH dashboard build in progress |
 | Only Keycloak tested | Entra ID needs the same per-gateway app roles; its token `sub` is per application, so membership must use the token's `sub`, never the directory object ID |
-| CLI service-account sessions expire after 5 minutes and the CLI tries to refresh instead of logging in again | Scripts run `openshell gateway login` first; seen with CLI `0.1.3-dev` (8719fc9) |
+| CLI service-account sessions expire after 5 minutes and the CLI tries to refresh instead of logging in again | Scripts run `openshell gateway login` first; seen with CLI `0.1.3-dev` (8719fc9). Filed upstream as [NVIDIA/OpenShell#4287](https://github.com/NVIDIA/OpenShell/issues/4287) |
 | `make grant` and `make revoke` edit groups through the Keycloak bootstrap admin | Evaluation shortcut; in production manage groups in Keycloak or your directory and let the sync follow |

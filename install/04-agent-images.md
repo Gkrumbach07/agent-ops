@@ -20,6 +20,8 @@ Start from **`registry.access.redhat.com/ubi9/ubi-minimal`**. It has a shell and
 
 The sandbox policy names binaries by their exact path in the image. If the policy allows `/usr/bin/python3.12`, the agent must run that binary: a symlink or a virtual environment elsewhere is a different path. In `ubi9/python-*` images, `python3` is a virtual environment under `/opt/app-root`, which the default filesystem policy does not allow; run `/usr/bin/python3.12` or add `/opt/app-root` to the policy.
 
+Agents that open a terminal themselves (`tmux`, `screen`, Python `pty`, `os.openpty()`) need `/dev/ptmx` and `/dev/pts` under `read_write` in the policy; the default policy allows writing only `/tmp` and `/dev/null`, so opening a terminal fails with `Permission denied`. `openshell sandbox exec --tty` and `openshell sandbox connect` do not need this: OpenShell allocates that terminal outside the agent's policy.
+
 ## Build and run the example
 
 The example in [`examples/byo-agent`](../examples/byo-agent/) is a Python agent that makes one HTTPS call the policy allows and one it does not.
