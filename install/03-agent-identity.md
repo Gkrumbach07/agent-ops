@@ -182,7 +182,7 @@ allowed to call them. Do not set `tls: none`; current OpenShell rejects it.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Every call returns HTTP 502 after a while; Keycloak logs `subject_token validation failure` | The user's Keycloak session expired. Stored tokens only work while the session is alive. Step 4 sets a 10-hour idle timeout. | Refresh the token: `openshell provider update <provider> --credential subject_token=<new token>`. It applies to running sandboxes. |
-| First call from a new sandbox returns HTTP 502; Keycloak logs `Audience not found` | The sandbox's Keycloak client does not exist. The interceptor was down when the sandbox was created. | Check `oc logs deploy/keycloak-registrar`, then recreate the sandbox. |
+| First call from a new sandbox returns HTTP 502; Keycloak logs `Audience not found` | The sandbox's Keycloak client does not exist: the interceptor was down when the sandbox was created, or it could not reach Keycloak (its log shows `keycloak registration failed`) | Check `oc logs deploy/keycloak-registrar`, then recreate the sandbox. |
 | Gateway fails to start after step 5 | The gateway cannot reach the interceptor at startup. | Check `oc get pods -l app=keycloak-registrar` and the gateway log for `interceptor`. |
 | Python HTTPS calls fail with `Operation not supported` | RHCOS kernel limitation. | See Known Limitations in the [install guide](01-install.md#known-limitations). |
 
@@ -193,4 +193,3 @@ allowed to call them. Do not set `tls: none`; current OpenShell rejects it.
 - Keycloak's SPIFFE support and the Red Hat build of Agent Sandbox are Technology
   Preview.
 - The interceptor is not yet part of OpenShell or a Red Hat product.
-- **Private-CA Keycloak.** With user authentication on and `KEYCLOAK_CA_FILE` set (the gateway configured with `server.oidc.caConfigMapName`), the token exchange fails: the gateway's `ExchangeProviderSubjectToken` returns `FAILED_PRECONDITION` and the supervisor answers the agent with 502. Observed on 2026-10-06 with `v0.1.2-rhaiv.5`; the same flow works when Route certificates are publicly trusted. Cause not yet identified.

@@ -21,8 +21,11 @@ oc -n "${NAMESPACE}" get bc keycloak-registrar >/dev/null 2>&1 || \
 oc -n "${NAMESPACE}" start-build keycloak-registrar --from-dir="${stage}" --wait >/dev/null
 
 log "deploying the interceptor"
+# The registrar only calls Keycloak's admin API, so it uses the in-cluster Service. Going through
+# the public Route would fail whenever the Route certificate is signed by a private CA.
+registrar_keycloak_url="${REALM_INTERNAL_URL%/realms/*}"
 sed -e "s#image-registry.openshift-image-registry.svc:5000/openshell/keycloak-registrar:latest#${IMAGE}#" \
-    -e "s#http://keycloak.openshell.svc.cluster.local#${KEYCLOAK_URL}#" \
+    -e "s#http://keycloak.openshell.svc.cluster.local#${registrar_keycloak_url}#" \
     -e "s#{name: GATEWAY_ID, value: openshell}#{name: GATEWAY_ID, value: ${RELEASE}}#" \
     -e "s#{name: KEYCLOAK_REALM, value: openshell}#{name: KEYCLOAK_REALM, value: ${REALM}}#" \
     -e "s#\"spiffe://openshell.local/ns/openshell/sa/openshell\"#\"${GATEWAY_SPIFFE_ID}\"#" \

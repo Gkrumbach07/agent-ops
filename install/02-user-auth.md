@@ -45,7 +45,7 @@ openshell-<ns>-ws-<workspace>-admins-> gateway user + admin of <workspace>
   export KEYCLOAK_CA_FILE=$PWD/ingress-ca.pem
   ```
 
-- Pods must be able to reach the cluster's `*.apps` Routes: the gateway and oauth2-proxy call Keycloak through its Route. Sandboxes and the token-exchange demo use Keycloak's Service directly. With a private CA, user login is validated but [agent identity](03-agent-identity.md#known-limitations) is not yet working.
+- Pods must be able to reach the cluster's `*.apps` Routes: the gateway and oauth2-proxy call Keycloak through its Route. Sandboxes and the token-exchange demo use Keycloak's Service directly. With a private CA, both user login and [agent identity](03-agent-identity.md) are validated (2026-10-07).
 
 ## Set it up
 
