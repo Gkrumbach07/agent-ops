@@ -23,6 +23,8 @@ pub struct Config {
     pub trust_domain: String,
     /// Empty selects the default template.
     pub spiffe_id_template: String,
+    /// Namespace of the sandbox supervisor pods (the `{namespace}` placeholder).
+    pub sandbox_namespace: String,
     pub keycloak: KeycloakConfig,
 }
 
@@ -46,6 +48,7 @@ impl Config {
             audience: optional("INTERCEPTOR_AUDIENCE", DEFAULT_AUDIENCE),
             trust_domain: required("SPIFFE_TRUST_DOMAIN")?,
             spiffe_id_template: optional("SPIFFE_ID_TEMPLATE", ""),
+            sandbox_namespace: optional("SANDBOX_NAMESPACE", ""),
             keycloak: KeycloakConfig {
                 base_url: required("KEYCLOAK_URL")?,
                 realm: required("KEYCLOAK_REALM")?,

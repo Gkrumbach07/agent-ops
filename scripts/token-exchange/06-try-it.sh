@@ -123,5 +123,5 @@ openshell sandbox create --name "${SANDBOX}" --from registry.access.redhat.com/u
     --provider "${PROVIDER}" --no-auto-providers --detach >/dev/null
 openshell sandbox exec --name "${SANDBOX}" --no-tty -- curl -sS "http://${API_HOST}/"
 echo
-log "expected: preferred_username=${DEMO_USER}, azp=${TRUST_DOMAIN}/openshell/sandbox/<sandbox-id>"
+log "expected: preferred_username=${DEMO_USER}, azp=${TRUST_DOMAIN}/openshell/sandbox/${NAMESPACE}.os-supervisor-<sandbox-id>.<sandbox-id>"
 log "clean up with: openshell sandbox delete ${SANDBOX}"

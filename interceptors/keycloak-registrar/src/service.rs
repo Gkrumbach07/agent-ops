@@ -313,7 +313,7 @@ mod tests {
             GatewayTokenVerifier::new(keys.public_pem.as_bytes(), GW, AUD).unwrap(),
             AUD.to_string(),
             "spiffe://openshell.local".to_string(),
-            SpiffeIdTemplate::new("").unwrap(),
+            SpiffeIdTemplate::new("", "openshell").unwrap(),
             registrar,
         )
     }
@@ -423,7 +423,8 @@ mod tests {
             .unwrap()
             .into_inner();
 
-        let want = "spiffe://openshell.local/openshell/sandbox/9c4daea2";
+        let want =
+            "spiffe://openshell.local/openshell/sandbox/openshell.os-supervisor-9c4daea2.9c4daea2";
         assert!(result.allowed);
         assert_eq!(*registrar.ensured.lock().unwrap(), vec![want.to_string()]);
         assert_eq!(result.log_annotations["keycloak_registrar.spiffe_id"], want);
@@ -449,7 +450,7 @@ mod tests {
         assert!(result.allowed);
         assert_eq!(
             *registrar.deleted.lock().unwrap(),
-            vec!["spiffe://openshell.local/openshell/sandbox/3c1cfe14".to_string()]
+            vec!["spiffe://openshell.local/openshell/sandbox/openshell.os-supervisor-3c1cfe14.3c1cfe14".to_string()]
         );
         assert_eq!(
             result.log_annotations["keycloak_registrar.outcome"],

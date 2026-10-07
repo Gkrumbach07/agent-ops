@@ -19,7 +19,7 @@ holds a credential:
 ```json
 {
   "preferred_username": "alice",
-  "azp": "spiffe://openshell.local/openshell/sandbox/11a0cfaa-a4b8-4fa3-adbf-63a3eb32f0f3",
+  "azp": "spiffe://openshell.local/openshell/sandbox/openshell.os-supervisor-2d49346f-e70c-4d76-9452-b3470314b64b.2d49346f-e70c-4d76-9452-b3470314b64b",
   "aud": "whoami-api"
 }
 ```
@@ -86,7 +86,10 @@ it after adding or replacing worker nodes. Details, evidence, and the suggested 
 ./scripts/token-exchange/02-sandbox-spiffe-ids.sh
 ```
 
-Every sandbox supervisor gets `spiffe://<trust-domain>/openshell/sandbox/<sandbox-id>`.
+Every sandbox supervisor gets `spiffe://<trust-domain>/openshell/sandbox/<namespace>.<pod-name>.<sandbox-id>`,
+the form Gordon Sim proposed upstream in [NVIDIA/OpenShell#3100](https://github.com/NVIDIA/OpenShell/pull/3100).
+The namespace and pod name come from the pod itself, so a pod that only copies the
+`openshell.ai/sandbox-id` annotation gets a different ID, with no Keycloak client.
 The agent's own container never gets access to SPIFFE credentials.
 
 ## Step 3: Run Keycloak

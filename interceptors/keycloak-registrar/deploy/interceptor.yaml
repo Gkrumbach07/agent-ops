@@ -49,6 +49,9 @@ spec:
             - {name: GATEWAY_PUBLIC_KEY_FILE, value: /gateway/public.pem}
             - {name: GATEWAY_ID, value: openshell}
             - {name: SPIFFE_TRUST_DOMAIN, value: "spiffe://openshell.local"}
+            # Sandbox supervisor pods run in the gateway namespace (Shared workspace mode).
+            - name: SANDBOX_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
             - {name: KEYCLOAK_URL, value: "http://keycloak.openshell.svc.cluster.local"}
             - {name: KEYCLOAK_REALM, value: openshell}
             - {name: GATEWAY_CLIENT_ID, value: "spiffe://openshell.local/ns/openshell/sa/openshell"}

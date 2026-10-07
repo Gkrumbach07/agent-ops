@@ -3,11 +3,11 @@
 
 use std::sync::Arc;
 
-use openshell_core::proto::gateway_interceptor::v1::gateway_interceptor_server::GatewayInterceptorServer;
 use keycloak_registrar_interceptor::{
     auth::GatewayTokenVerifier, config::Config, keycloak::KeycloakAdmin, service::RegistrarService,
     spiffe::SpiffeIdTemplate,
 };
+use openshell_core::proto::gateway_interceptor::v1::gateway_interceptor_server::GatewayInterceptorServer;
 use tonic::transport::{Identity, Server, ServerTlsConfig};
 use tracing::info;
 
@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env(|key| std::env::var(key).ok())?;
     let public_key = std::fs::read(&config.gateway_public_key_file)?;
     let verifier = GatewayTokenVerifier::new(&public_key, &config.gateway_id, &config.audience)?;
-    let template = SpiffeIdTemplate::new(&config.spiffe_id_template)?;
+    let template = SpiffeIdTemplate::new(&config.spiffe_id_template, &config.sandbox_namespace)?;
     let identity = Identity::from_pem(
         std::fs::read(&config.tls_cert_file)?,
         std::fs::read(&config.tls_key_file)?,

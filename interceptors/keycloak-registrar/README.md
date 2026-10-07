@@ -19,9 +19,16 @@ driver.
 | `DeleteSandbox` | `post_commit` | Removes the audience scope from the gateway client, then deletes the scope and the client. |
 
 The SPIFFE ID comes from `SPIFFE_ID_TEMPLATE` (default
-`{trustDomain}/openshell/sandbox/{sandboxID}`). It must equal the
-ClusterSPIFFEID template that issues supervisor SVIDs. Only `{trustDomain}` and
-`{sandboxID}` are allowed, because `DeleteSandbox` returns only the sandbox ID.
+`{trustDomain}/openshell/sandbox/{namespace}.{podName}.{sandboxID}`). It must
+equal the ClusterSPIFFEID template that issues supervisor SVIDs. The default
+matches the pod-qualified form Gordon Sim proposed upstream in
+[NVIDIA/OpenShell#3100](https://github.com/NVIDIA/OpenShell/pull/3100): a
+sandbox ID alone is spoofable, because any pod that copies the
+`openshell.ai/sandbox-id` annotation would receive the same ID. Allowed
+placeholders are `{trustDomain}`, `{namespace}` (from `SANDBOX_NAMESPACE`),
+`{podName}` (the supervisor pod, `os-supervisor-<lowercased sandbox ID>`) and
+`{sandboxID}`; all of them are known for both `CreateSandbox` and
+`DeleteSandbox`.
 
 Object names match [perilinkle](https://github.com/grs/perilinkle), so either
 can manage the same realm.
@@ -52,7 +59,8 @@ interceptor logs.
 | `GATEWAY_ID` | Yes | |
 | `INTERCEPTOR_AUDIENCE` | No | `urn:openshell:extension:interceptor:keycloak-registrar` |
 | `SPIFFE_TRUST_DOMAIN` | Yes | |
-| `SPIFFE_ID_TEMPLATE` | No | `{trustDomain}/openshell/sandbox/{sandboxID}` |
+| `SPIFFE_ID_TEMPLATE` | No | `{trustDomain}/openshell/sandbox/{namespace}.{podName}.{sandboxID}` |
+| `SANDBOX_NAMESPACE` | When the template uses `{namespace}` | Namespace of the sandbox supervisor pods; the manifest sets the registrar's own namespace (Shared workspace mode) |
 | `KEYCLOAK_URL`, `KEYCLOAK_REALM` | Yes | |
 | `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` | Yes | |
 | `KEYCLOAK_IDENTITY_PROVIDER` | No | `spiffe` |
