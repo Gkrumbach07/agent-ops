@@ -486,14 +486,16 @@ Repeat Step 11 with the following replacements. In the variable block they are `
 
 ### Step 13: Configure the laptop CLI
 
-The CLI must be a 0.1.x release; a 0.0.x CLI connects but fails on most commands (see Troubleshooting). Because the gateway serves the chart-generated certificate (Step 9), the CLI needs that gateway's CA before it can connect. An administrator extracts it once and sends the file to users; it is a public certificate, not a secret:
+The CLI must be a 0.1.x release; a 0.0.x CLI connects but fails on most commands (see Troubleshooting). Because each gateway serves the chart-generated certificate (Step 9), the CLI needs that gateway's CA before it can connect. An administrator extracts each one once and sends the files to users; they are public certificates, not secrets:
 
 ```shell
 oc -n namespace-a get secret openshell-client-tls -o jsonpath='{.data.ca\.crt}' | base64 -d > gateway-a-ca.crt
+oc -n namespace-b get secret openshell-client-tls -o jsonpath='{.data.ca\.crt}' | base64 -d > gateway-b-ca.crt
 
-# on the user's machine
-mkdir -p ~/.config/openshell/gateways/namespace-a/mtls
+# on the user's machine, one directory per gateway name
+mkdir -p ~/.config/openshell/gateways/namespace-a/mtls ~/.config/openshell/gateways/namespace-b/mtls
 cp gateway-a-ca.crt ~/.config/openshell/gateways/namespace-a/mtls/ca.crt
+cp gateway-b-ca.crt ~/.config/openshell/gateways/namespace-b/mtls/ca.crt
 ```
 
 Register both gateways. The CLI automatically adds `openid`; request `profile` and `email`. Keycloak derives the API audience from the permitted API client roles:
