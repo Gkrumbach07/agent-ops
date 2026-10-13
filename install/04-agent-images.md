@@ -42,9 +42,9 @@ make byo-agent      # OpenShift binary build into the internal registry, then a 
 Or with your own registry:
 
 ```shell
-podman build -t quay.io/<you>/byo-agent:latest examples/byo-agent
-podman push quay.io/<you>/byo-agent:latest
-openshell sandbox create --name byo-agent --from quay.io/<you>/byo-agent:latest \
+podman build -t quay.io/<you>/byo-agent:1.0 examples/byo-agent
+podman push quay.io/<you>/byo-agent:1.0
+openshell sandbox create --name byo-agent --from quay.io/<you>/byo-agent:1.0 \
   --policy examples/byo-agent/policy.yaml --no-tty
 openshell sandbox exec --name byo-agent --no-tty -- /usr/bin/python3.12 /usr/local/bin/agent.py
 ```

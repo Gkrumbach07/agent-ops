@@ -96,7 +96,7 @@ The user's experience: open the dashboard link and sign in with their account; f
 - **The dashboard cannot be bypassed.** It listens on loopback, the NetworkPolicy admits only the OpenShift router, and it holds only the gateway CA, never a client key: it can act only with the signed-in user's token.
 - **Revocation is immediate inside OpenShell.** Removing the membership denies the workspace at once; the role in an already-issued token lasts until it expires (5 minutes by default).
 - **The mTLS client bundle no longer signs anyone in** once OIDC is on (`missing authorization header`); it only protects the connection.
-- Secrets live only in Kubernetes Secrets and are never printed by the scripts.
+- Secrets live only in Kubernetes Secrets and are never printed by the scripts. The scripts hand them to `oc exec` and to `curl` on standard input, not as arguments, so they are not in the API server's audit log or in the local process list. Inside the Keycloak pod, `kcadm.sh` still takes a new client secret or password as an argument for the moment it runs.
 
 ## Troubleshooting
 
@@ -117,7 +117,7 @@ The user's experience: open the dashboard link and sign in with their account; f
 |---|---|
 | Workspace membership has no native group mapping; the sync bridges it | Filed upstream as [NVIDIA/OpenShell#4286](https://github.com/NVIDIA/OpenShell/issues/4286) (workspace group bindings). Until then run the sync after group changes (or on a schedule) |
 | Keycloak runs in dev mode; realm and users are lost on restart | Use the RHBK operator with a database for anything shared |
-| oauth2-proxy and the dashboard are not product images yet | `quay.io/oauth2-proxy/oauth2-proxy`, `quay.io/gkrumbach07/openshell-dashboard:1.2.0`; ODH dashboard build in progress |
+| oauth2-proxy and the dashboard are not product images yet | `quay.io/oauth2-proxy/oauth2-proxy`, `quay.io/gkrumbach07/openshell-dashboard:0.1.0`; ODH dashboard build in progress |
 | Only Keycloak tested | Entra ID needs the same per-gateway app roles; its token `sub` is per application, so membership must use the token's `sub`, never the directory object ID |
 | CLI service-account sessions expire after 5 minutes and the CLI tries to refresh instead of logging in again | Scripts run `openshell gateway login` first; seen with CLI `0.1.3-dev` (8719fc9). Filed upstream as [NVIDIA/OpenShell#4287](https://github.com/NVIDIA/OpenShell/issues/4287) |
-| `make grant` and `make revoke` edit groups through the Keycloak bootstrap admin | Evaluation shortcut; in production manage groups in Keycloak or your directory and let the sync follow |
+| `make grant` and `make revoke` edit groups through the Keycloak bootstrap admin | Evaluation shortcut: whoever can run them can read the `keycloak-admin` Secret and has full control of Keycloak. In production manage groups in Keycloak or your directory and let the sync follow |

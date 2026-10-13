@@ -73,11 +73,18 @@ which mounts the SPIFFE Workload API into the gateway and sandbox supervisor pod
 
 Expected: `ZTWIM is Ready`.
 
-ZTWIM 1.1.1 tells SPIRE to ignore `openshift-*` namespaces, which includes its own
-`openshift-ztwim` namespace, so its OIDC discovery provider never gets an identity
-and crash-loops. Keycloak needs that endpoint to verify sandbox identities. The
-script registers the provider with one `ClusterStaticEntry` per worker node. Re-run
-it after adding or replacing worker nodes. Details, evidence, and the suggested fix:
+ZTWIM 1.1.1 tells SPIRE to ignore `openshift-*` namespaces. Installed into
+`openshift-ztwim`, which the scripts assume, that includes its own namespace, so its
+OIDC discovery provider never gets an identity and crash-loops. Keycloak needs that
+endpoint to verify sandbox identities. The script registers the provider with one
+`ClusterStaticEntry` per worker node. Re-run it after adding or replacing worker nodes.
+
+Installed into its suggested namespace, `zero-trust-workload-identity-manager`, ZTWIM
+does not have the problem: skip this step and set `SPIRE_JWKS` to the `/keys` URL of
+the OIDC discovery provider in that namespace before the other steps. That path has
+not been run here.
+
+Details, evidence, and the suggested fix:
 [ZTWIM 1.1.1 OIDC discovery provider never becomes ready](../reference/known-issues/ztwim-oidc-discovery-provider.md).
 
 ## Step 2: Give each sandbox its own SPIFFE ID
@@ -151,7 +158,13 @@ the sandbox, about 18 seconds before the sandbox was ready.
 
 The script deploys a `whoami-api` that verifies Keycloak tokens, gives OpenShell a
 provider holding Alice's token, starts a sandbox, and calls the API from inside it
-with plain `curl`. You should see the JSON at the top of this page.
+with plain `curl`. You should see the JSON at the top of this page. The script checks
+the answer and fails unless the API returned 200 with Alice as `preferred_username`,
+`whoami-api` in `aud`, and the sandbox's own identity as `azp`.
+
+The `whoami-api` pod installs PyJWT from PyPI when it starts. On a cluster without
+egress to `pypi.org` and `files.pythonhosted.org`, point `PIP_INDEX_URL` on its
+Deployment at a mirror.
 
 What happened on that call:
 
@@ -193,3 +206,8 @@ allowed to call them. Do not set `tls: none`; current OpenShell rejects it.
 - Keycloak's SPIFFE support and the Red Hat build of Agent Sandbox are Technology
   Preview.
 - The interceptor is not yet part of OpenShell or a Red Hat product.
+- The interceptor's Keycloak service account has `manage-clients` on the whole realm,
+  which it shares with the user-authentication clients. Someone who obtains the
+  `keycloak-registrar-keycloak` Secret can change any client in the realm, including
+  the gateway's. For anything beyond evaluation, give sandbox clients a realm of their
+  own or restrict the account with Keycloak's fine-grained admin permissions.

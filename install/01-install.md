@@ -44,13 +44,14 @@ Unless noted otherwise, run all commands on your local machine.
 ## Install the OpenShell CLI
 
 This guide uses the OpenShell build validated on OpenShift: the Red Hat build
-`v0.1.2-rhaiv.5`, made from upstream `main` at commit `e7fdd6b`. There is no
-tagged CLI release for it. From a checked-out copy of this repository, run the
-installer wrapper. It downloads `install.sh` from commit `8719fc9`, verifies its
-pinned SHA-256 checksum, and installs the rolling `dev` CLI build. The CLI used
-for validation was built from source at `8719fc9`
-(`cargo build --release -p openshell-cli`) and works with the `v0.1.2-rhaiv.5`
-gateway. A Linux CLI binary from the same Red Hat build is in
+`v0.1.2-rhaiv.5`, made from upstream `main` at commit `e7fdd6b`. From a
+checked-out copy of this repository, run the installer wrapper. It downloads
+`install.sh` from commit `8719fc9`, verifies its pinned SHA-256 checksum, and
+installs the CLI release `v0.1.2`, the release that build is based on; the
+installer checks the download against the checksums published with the release.
+The guides were validated with that release and with a CLI built from source at
+`8719fc9` (`cargo build --release -p openshell-cli`); see the README for which
+ran where. A Linux CLI binary from the same Red Hat build is in
 `quay.io/opendatahub/odh-openshell-cli:v0.1.2-rhaiv.5`.
 
 ```shell
@@ -258,7 +259,7 @@ The sandbox runs in the `openshell` namespace with the default policy: no networ
 
 ## Optional: the OpenShell dashboard
 
-The [OpenShell dashboard](https://github.com/Gkrumbach07/openshell-dashboard) is a standalone web UI for workspaces, sandboxes, providers and gateway status. It talks to the gateway with the same mTLS client bundle as the CLI. Dashboard `1.2.0` supports gateways `0.1.0` to `0.1.2` and was validated against `v0.1.2-rhaiv.5`: it reports the gateway as supported, lists workspaces and sandboxes, and creates, inspects and deletes sandboxes.
+The [OpenShell dashboard](https://github.com/Gkrumbach07/openshell-dashboard) is a standalone web UI for workspaces, sandboxes, providers and gateway status. It talks to the gateway with the same mTLS client bundle as the CLI. Dashboard `0.1.0` is for gateways `0.1.x` and was validated against `v0.1.2-rhaiv.5`: it reports the gateway as supported, lists workspaces and sandboxes, and creates, inspects and deletes sandboxes.
 
 Deploy it into the gateway's namespace, without a `Route`, and open it through a port-forward:
 
@@ -270,7 +271,7 @@ oc -n openshell port-forward svc/openshell-dashboard 8080:8080
 Open `http://localhost:8080`.
 
 > [!WARNING]
-> This manifest runs the dashboard with `AUTH_DISABLED=true`, so anyone who can reach it acts as a platform admin. Keep it behind `oc port-forward`; do not create a `Route` for it. For a shared deployment, `make user-auth` replaces this evaluation install with the dashboard behind an oauth2-proxy login, OIDC on the gateway and a NetworkPolicy; see [User authentication](02-user-auth.md).
+> This manifest runs the dashboard with `AUTH_DISABLED=true`, so anyone who can reach it acts as a platform admin. Its `NetworkPolicy` admits no connection from any pod, which leaves `oc port-forward` as the only way in; do not create a `Route` for it or loosen the policy. For a shared deployment, `make user-auth` replaces this evaluation install with the dashboard behind an oauth2-proxy login, OIDC on the gateway and a NetworkPolicy; see [User authentication](02-user-auth.md).
 
 ## Troubleshooting
 

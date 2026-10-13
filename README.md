@@ -54,27 +54,36 @@ Everything the guides and scripts depend on, in one place. `./scripts/preflight.
 | Pull access to `registry.redhat.io` | Token exchange | Red Hat build of Keycloak image; the default global pull secret is enough | no |
 | Publicly trusted Route certificates, or `KEYCLOAK_CA_FILE` | User authentication | The gateway requires an HTTPS issuer it can verify | warns |
 | Pods can reach `*.apps` Routes | User authentication | The gateway and oauth2-proxy call Keycloak through its Route | no |
-| Local tools: `oc`, `helm` 3 or 4, `openssl`, `jq`, `curl`, `openshell` | Everything (`jq`, `curl`: token exchange and user authentication) | Validated with `oc` 4.20, Helm 4.2.0, CLI `0.1.3-dev` (8719fc9) | yes |
-| Network egress, or mirrors of: `quay.io`, `ghcr.io`, `registry.redhat.io`, `registry.access.redhat.com`, `docker.io`, `github.com` | Installation | Product and dashboard images, oauth2-proxy (`quay.io`); Helm chart (`ghcr.io`); Keycloak; UBI images; the Rust builder for the interceptor (`docker.io`); the CLI installer (`github.com`) | no |
+| Local tools: `oc`, `helm` 3 or 4, `openssl`, `jq`, `curl`, `openshell` | Everything (`jq`, `curl`: token exchange and user authentication) | Validated with `oc` 4.20, Helm 4.2.0 and a CLI built at `8719fc9` (`0.1.3-dev`); `make cli` installs the release `v0.1.2` | yes |
+| Network egress, or mirrors of: `quay.io`, `ghcr.io`, `registry.redhat.io`, `registry.access.redhat.com`, `docker.io`, `github.com`, `pypi.org`, `files.pythonhosted.org` | Installation; `pypi.org` and `files.pythonhosted.org` only for `make try-it` | Product and dashboard images, oauth2-proxy (`quay.io`); Helm chart (`ghcr.io`); Keycloak; UBI images; the Rust builder for the interceptor (`docker.io`); the CLI installer (`github.com`); PyJWT, which the `whoami-api` demo pod installs when it starts (PyPI; set `PIP_INDEX_URL` on the Deployment for a mirror) | no |
 | A browser | User authentication | People sign in through Keycloak; the CLI can use a device code instead | no |
 
 ## What was validated, and its support status
 
 This table is the single source of validated versions; the guides link here.
 
-Everything in the setup guides was run end to end on
-this stack. Status as of 2026-10-06.
+The setup guides and their `make` targets were run end to end on this stack. Status as of
+2026-10-06.
+
+The scripts as changed in review were run on a second stack on 2026-10-13, and the table says so
+where it differs: OpenShift 4.21.0 (ROSA), the same OpenShell build, CLI release `0.1.2` and
+dashboard `0.1.0`. Run there: `make deploy`, `make dashboard`, the steps of `make user-auth`
+(20 checks pass), `make grant`, `make revoke`, `make connect-info` and `make byo-agent`. That
+cluster has no Zero Trust Workload Identity Manager, so the gateway was deployed without SPIFFE
+and `make token-exchange` and `make try-it` have not been run with those changes. The check
+that `make try-it` gained was tried against recorded answers and against that gateway, where it
+fails as it should.
 
 | Component | Validated | Latest available | Support status |
 |---|---|---|---|
-| OpenShift | 4.20.27 (RHCOS 9.6, kernel 5.14) | | GA |
-| OpenShell | Red Hat build `v0.1.2-rhaiv.5` (upstream `main` at `e7fdd6b`, chart `0.0.0-dev.e7fdd6beef98f7f92d86271a169fdd4d3be44cf3`); CLI built at `8719fc9` | `odh-stable` (upstream `12cec59`, includes the kernel 5.14 fix) | Developer Preview in Red Hat OpenShift AI 3.5; Technology Preview targeted for 3.6 |
+| OpenShift | 4.20.27 (RHCOS 9.6, kernel 5.14); the second stack is 4.21.0 | | GA |
+| OpenShell | Red Hat build `v0.1.2-rhaiv.5` (upstream `main` at `e7fdd6b`, chart `0.0.0-dev.e7fdd6beef98f7f92d86271a169fdd4d3be44cf3`); CLI built at `8719fc9`, and the release `v0.1.2` on the second stack | `odh-stable` (upstream `12cec59`, includes the kernel 5.14 fix) | Developer Preview in Red Hat OpenShift AI 3.5; Technology Preview targeted for 3.6 |
 | Red Hat build of Agent Sandbox | 0.9.0, channel `preview-0.9` | upstream v1.0.5 (serves `v1beta1`, compatible) | Technology Preview, shipped with OpenShift sandboxed containers 1.12 |
 | Zero Trust Workload Identity Manager | 1.1.1, channel `stable-v1` | 1.1.1 | GA (since 1.0.0); see [known issue](reference/known-issues/ztwim-oidc-discovery-provider.md) |
 | Red Hat build of Keycloak | 26.6.7 | 26.6.7 (upstream Keycloak 26.8.0) | GA; **SPIFFE client authentication is Technology Preview** (`--features=spiffe`). Federated client auth with Kubernetes service accounts or OIDC is supported in 26.6 |
 | OpenShell gateway interceptors | in `e7fdd6b` | | Part of OpenShell; no Helm chart values yet |
-| [OpenShell dashboard](install/01-install.md#optional-the-openshell-dashboard) | 1.2.0 (supports gateways 0.1.0 to 0.1.2) | | Standalone UI, not yet downstreamed; ODH image builds are in progress |
-| [User login](install/02-user-auth.md) (OIDC, oauth2-proxy, group-based workspace access) | oauth2-proxy v7.15.5; 18 checks pass | | Gateway OIDC is part of OpenShell; group-to-workspace sync is this repository's script (no native support upstream) |
+| [OpenShell dashboard](install/01-install.md#optional-the-openshell-dashboard) | 0.1.0 (for gateways 0.1.x) | | Standalone UI, not yet downstreamed; ODH image builds are in progress |
+| [User login](install/02-user-auth.md) (OIDC, oauth2-proxy, group-based workspace access) | oauth2-proxy v7.15.5; 20 checks pass | | Gateway OIDC is part of OpenShell; group-to-workspace sync is this repository's script (no native support upstream) |
 | [keycloak-registrar](interceptors/keycloak-registrar/) interceptor | this repository | | Prototype, not supported |
 | Security context | default `restricted-v2` SCC, no added capabilities, no privileged grant | | |
 
@@ -97,7 +106,7 @@ Many of these, and several setup steps, are workarounds for missing product piec
 |---|---|---|
 | OpenShell gateway, supervisor, sandbox runtime | `quay.io/opendatahub/odh-openshell-{gateway,supervisor,sandbox}:v0.1.2-rhaiv.5` (Red Hat build, Konflux) with chart `0.0.0-dev.e7fdd6b…` | Already product builds. To change version, set `ODH_IMAGE_TAG` and the matching `OPENSHELL_HELM_VERSION` (the upstream dev chart for the commit the build was synced from). `ODH_IMAGE_TAG=` uses upstream `ghcr.io/nvidia/openshell/*` images instead. For a custom build, also set `ODH_IMAGE_REGISTRY` and `ODH_IMAGE_REPO_PREFIX` (for example `quay.io/<you>` and `openshell-`). On a running install, `make switch-images` upgrades and re-registers the interceptor. `odh-stable` works but reports version `0.0.0`, so the dashboard cannot check compatibility. |
 | keycloak-registrar interceptor | Built on your cluster from [`interceptors/keycloak-registrar`](interceptors/keycloak-registrar/) using `docker.io/library/rust` as the builder | A product-built interceptor image once one exists |
-| OpenShell dashboard (optional) | `quay.io/gkrumbach07/openshell-dashboard:1.2.0` | The Red Hat build (`quay.io/opendatahub/odh-openshell-dashboard`) once it is released |
+| OpenShell dashboard (optional) | `quay.io/gkrumbach07/openshell-dashboard:0.1.0`, pinned by digest in the manifests | The Red Hat build (`quay.io/opendatahub/odh-openshell-dashboard`) once it is released |
 | Red Hat build of Keycloak | `registry.redhat.io/rhbk/keycloak-rhel9` 26.6.7 | Already a product image; use the RHBK operator in production |
 | Agent and demo images (sandbox workloads, `whoami-api`) | `registry.access.redhat.com/ubi9/*` | Your agent's image: start from `ubi9/ubi-minimal` and follow [Bring your own agent image](install/04-agent-images.md). The OpenClaw reference image `quay.io/opendatahub/odh-openshell-sandbox-openclaw` is in progress (pull-request builds only so far) |
 

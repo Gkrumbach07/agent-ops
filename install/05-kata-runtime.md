@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > This guide was written for OpenShell 0.0.116 and has not been re-validated with
-> the build used by the install guide (`main` at `8719fc9`). Chart 0.1.x
+> the build used by the install guide (`v0.1.2-rhaiv.5`, upstream `main` at `e7fdd6b`). Chart 0.1.x
 > renamed the image values (`gateway.image.*`, `supervisor.image.*`,
 > `sandboxRuntime.image.*`) and no longer needs a privileged SCC.
 
