@@ -21,8 +21,15 @@ if [[ -n "${KEYCLOAK_CA_FILE}" ]]; then
     CA_VOLUME=$'\n        - name: keycloak-ca\n          configMap: {name: keycloak-ca}'
 fi
 
-DASHBOARD_IMAGE="${DASHBOARD_IMAGE:-quay.io/gkrumbach07/openshell-dashboard:1.2.0}"
+DASHBOARD_IMAGE="${DASHBOARD_IMAGE:-quay.io/gkrumbach07/openshell-dashboard:0.1.0@sha256:a362788f96ee709c96fc7917feed3f55b44f63e260247ae0787d4478c6d7c37e}"
 OAUTH2_PROXY_IMAGE="${OAUTH2_PROXY_IMAGE:-quay.io/oauth2-proxy/oauth2-proxy:v7.15.5}"
+for v in "${DASHBOARD_IMAGE}" "${OAUTH2_PROXY_IMAGE}"; do
+    [[ "${v}" =~ ^[A-Za-z0-9][A-Za-z0-9._/:@-]*$ ]] || die "invalid image reference: ${v}"
+done
+# Signing out of the dashboard also ends the Keycloak session, then returns to the dashboard.
+# Without this only the proxy's cookie is cleared, and the next visit signs the same user in
+# again without a password. The proxy follows the redirect because of --whitelist-domain.
+LOGOUT_URL="/oauth2/sign_out?rd=$(jq -rn --arg u "${ISSUER}/protocol/openid-connect/logout?client_id=${DASHBOARD_CLIENT}&post_logout_redirect_uri=https://${DASHBOARD_HOST}/" '$u|@uri')"
 
 # Replace an evaluation install (`make dashboard`, port 8080, no login) rather than merging into it.
 if [[ "$(oc -n "${NAMESPACE}" get svc openshell-dashboard -o jsonpath='{.spec.ports[0].port}' 2>/dev/null)" == "8080" ]]; then
@@ -51,7 +58,9 @@ spec:
             - --allowed-role=${API_CLIENT}:admin
             - --allowed-role=${API_CLIENT}:user
             - --redirect-url=https://${DASHBOARD_HOST}/oauth2/callback
+            - --whitelist-domain=${KEYCLOAK_HOST}
             - --upstream=http://127.0.0.1:8080/
+            - --upstream-timeout=120s
             - --http-address=0.0.0.0:4180
             - --scope=openid profile email
             - --code-challenge-method=S256
@@ -85,6 +94,7 @@ spec:
             - {name: GATEWAY_CA_CERT, value: /etc/openshell/gateway-ca/ca.crt}
             - {name: AUTH_USER_HEADER, value: x-forwarded-user}
             - {name: ADMIN_ROLE, value: admin}
+            - {name: LOGOUT_URL, value: "${LOGOUT_URL}"}
           volumeMounts: [{name: gateway-ca, mountPath: /etc/openshell/gateway-ca, readOnly: true}]
           securityContext: *restricted
       volumes:
@@ -100,7 +110,11 @@ spec:
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
-metadata: {name: openshell-dashboard}
+metadata:
+  name: openshell-dashboard
+  # Deleting a sandbox takes about 30 seconds and the BFF waits for it. With the router's and the
+  # proxy's 30-second defaults the delete would report 504 although it completes.
+  annotations: {haproxy.router.openshift.io/timeout: 120s}
 spec:
   host: ${DASHBOARD_HOST}
   to: {kind: Service, name: openshell-dashboard}

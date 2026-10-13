@@ -8,16 +8,23 @@ set -euo pipefail
 user=${1:?usage: revoke.sh <username> [workspace]}; ws=${2:-}
 [[ "${user}" =~ ^[A-Za-z0-9._@-]+$ ]] || { echo "ERROR: invalid username" >&2; exit 1; }
 [[ -z "${ws}" || "${ws}" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] || { echo "ERROR: invalid workspace name" >&2; exit 1; }
-pattern="^${GROUP_PREFIX}-ws-${ws:-.+}-(users|admins)\$"
 
-kc_exec U="${user}" P="${pattern}" <<'IN'
-set -euo pipefail
-KC=/opt/keycloak/bin/kcadm.sh; CFG=(--config /tmp/kcadm.config)
-$KC config credentials "${CFG[@]}" --server http://localhost:8080 --realm master --user admin --password "$KC_ADMIN_PW" >/dev/null 2>&1
+# The group names are matched as text plus a fixed pattern, so nothing in GROUP_PREFIX is read as a
+# regular expression.
+kc_exec U="${user}" PREFIX="${GROUP_PREFIX}-ws-" WS="${ws}" <<'IN'
 u=$($KC get users -r "$R" "${CFG[@]}" -q username="$U" -q exact=true --fields id --format csv --noquotes | head -1)
 [ -n "$u" ] || { echo "ERROR: no user $U" >&2; exit 1; }
-$KC get "users/$u/groups" -r "$R" "${CFG[@]}" --fields id,name --format csv --noquotes | while IFS=, read -r g name; do
-    if [[ "$name" =~ $P ]]; then $KC delete "users/$u/groups/$g" -r "$R" "${CFG[@]}"; echo "removed from $name"; fi
-done
+groups=$($KC get "users/$u/groups" -r "$R" "${CFG[@]}" --fields id,name --format csv --noquotes)
+while IFS=, read -r g name; do
+    [[ "$name" == "$PREFIX"* ]] || continue
+    rest=${name#"$PREFIX"}
+    if [ -n "$WS" ]; then
+        [[ "$rest" == "$WS-users" || "$rest" == "$WS-admins" ]] || continue
+    else
+        [[ "$rest" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?-(users|admins)$ ]] || continue
+    fi
+    $KC delete "users/$u/groups/$g" -r "$R" "${CFG[@]}"
+    echo "removed from $name"
+done <<< "$groups"
 IN
 "$(dirname "$0")/05-sync-members.sh"

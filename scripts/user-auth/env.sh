@@ -14,12 +14,19 @@ export ISSUER="${KEYCLOAK_URL}/realms/${REALM}"
 # the gateway and oauth2-proxy get it as ConfigMap keycloak-ca, and local curl calls trust it too.
 export KEYCLOAK_CA_FILE="${KEYCLOAK_CA_FILE:-}"
 if [[ -n "${KEYCLOAK_CA_FILE}" ]]; then
-    [[ -f "${KEYCLOAK_CA_FILE}" ]] || { echo "ERROR: KEYCLOAK_CA_FILE ${KEYCLOAK_CA_FILE} not found" >&2; exit 1; }
-    for sys in /etc/ssl/cert.pem /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/certs/ca-certificates.crt; do
-        [[ -f "${sys}" ]] && break
+    [[ -f "${KEYCLOAK_CA_FILE}" ]] || die "KEYCLOAK_CA_FILE ${KEYCLOAK_CA_FILE} not found"
+    sys=""
+    for f in /etc/ssl/cert.pem /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/certs/ca-certificates.crt; do
+        [[ -f "${f}" ]] && { sys="${f}"; break; }
     done
-    export CURL_CA_BUNDLE="$(mktemp)"   # system roots plus the private CA, so other public endpoints still verify
+    [[ -n "${sys}" ]] || die "no system CA bundle found to combine with KEYCLOAK_CA_FILE"
+    # System roots plus the private CA, so other public endpoints still verify. One file per
+    # namespace, rewritten on every run, so nothing is left behind in a temporary directory.
+    bundle_dir="${XDG_CACHE_HOME:-${HOME}/.cache}/agent-ops"
+    mkdir -p "${bundle_dir}"
+    CURL_CA_BUNDLE="${bundle_dir}/ca-bundle-${NAMESPACE}.pem"
     cat "${sys}" "${KEYCLOAK_CA_FILE}" > "${CURL_CA_BUNDLE}"
+    export CURL_CA_BUNDLE
     export SSL_CERT_FILE="${CURL_CA_BUNDLE}"   # the openshell CLI reads it for its own Keycloak calls
 fi
 
@@ -42,9 +49,8 @@ export DASHBOARD_HOST="${DASHBOARD_HOST:-openshell-dashboard-${NAMESPACE}.${APPS
 export CLI_GATEWAY_NAME="${CLI_GATEWAY_NAME:-${NAMESPACE}}"                # CLI entry for the automation client
 export BFF_LOCAL_PORT="${BFF_LOCAL_PORT:-18081}"
 
-# Run a kcadm script inside the Keycloak pod as the bootstrap admin (evaluation installs).
-kc_exec() {
-    oc -n "${KEYCLOAK_NAMESPACE}" exec -i deploy/keycloak -- env \
-        KC_ADMIN_PW="$(oc -n "${KEYCLOAK_NAMESPACE}" get secret keycloak-admin -o jsonpath='{.data.password}' | base64 -d)" \
-        R="${REALM}" "$@" bash -s
-}
+# These values are written into manifests and into commands that are printed for users.
+for v in "${KEYCLOAK_HOST}" "${DASHBOARD_HOST}"; do
+    [[ "${v}" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || die "invalid host name: ${v}"
+done
+[[ "${GROUP_PREFIX}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "invalid GROUP_PREFIX: ${GROUP_PREFIX}"

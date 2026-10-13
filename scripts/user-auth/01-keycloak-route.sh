@@ -18,6 +18,7 @@ log "Keycloak Route: https://${KEYCLOAK_HOST}"
 "${TE}/03-deploy-keycloak.sh"
 "${TE}/04-configure-realm.sh"
 
+iss=""
 for _ in $(seq 1 30); do
     iss=$(curl -s -m 10 "${ISSUER}/.well-known/openid-configuration" | jq -r '.issuer // empty' 2>/dev/null || true)
     [[ "${iss}" == "${ISSUER}" ]] && break

@@ -18,27 +18,17 @@
 set -euo pipefail
 . "$(dirname "$0")/env.sh"
 
-sv() { oc -n "${NAMESPACE}" get secret "$1" -o "jsonpath={.data.$2}" 2>/dev/null | base64 -d; }
-ensure_secret() {  # name key value...
-    local name=$1; shift
-    oc -n "${NAMESPACE}" get secret "${name}" >/dev/null 2>&1 && return 0
-    local args=(); while [[ $# -gt 0 ]]; do args+=(--from-literal="$1=$2"); shift 2; done
-    oc -n "${NAMESPACE}" create secret generic "${name}" "${args[@]}" >/dev/null
-}
-ensure_secret keycloak-platform-admin username platform-admin password "$(openssl rand -hex 12)"
-ensure_secret openshell-dashboard-oidc client-secret "$(openssl rand -hex 24)" cookie-secret "$(openssl rand -hex 16)"
-ensure_secret openshell-automation-oidc client-secret "$(openssl rand -hex 24)"
-ensure_secret openshell-member-sync-oidc client-secret "$(openssl rand -hex 24)"
+ensure_secret "${NAMESPACE}" keycloak-platform-admin username platform-admin password "$(openssl rand -hex 12)"
+ensure_secret "${NAMESPACE}" openshell-dashboard-oidc client-secret "$(openssl rand -hex 24)" cookie-secret "$(openssl rand -hex 16)"
+ensure_secret "${NAMESPACE}" openshell-automation-oidc client-secret "$(openssl rand -hex 24)"
+ensure_secret "${NAMESPACE}" openshell-member-sync-oidc client-secret "$(openssl rand -hex 24)"
 
 kc_exec API="${API_CLIENT}" GP="${GROUP_PREFIX}" CLI="${CLI_CLIENT}" DASH="${DASHBOARD_CLIENT}" \
     AUTO="${AUTOMATION_CLIENT}" SYNC="${SYNC_CLIENT}" DASH_HOST="${DASHBOARD_HOST}" \
-    ADMIN_PW="$(sv keycloak-platform-admin password)" DASH_SECRET="$(sv openshell-dashboard-oidc client-secret)" \
-    AUTO_SECRET="$(sv openshell-automation-oidc client-secret)" SYNC_SECRET="$(sv openshell-member-sync-oidc client-secret)" \
-    <<'IN'
-set -euo pipefail
-KC=/opt/keycloak/bin/kcadm.sh; CFG=(--config /tmp/kcadm.config)
-$KC config credentials "${CFG[@]}" --server http://localhost:8080 --realm master --user admin --password "$KC_ADMIN_PW" >/dev/null 2>&1
-cid() { $KC get clients -r "$R" "${CFG[@]}" -q clientId="$1" --fields id --format csv --noquotes | head -1; }
+    ADMIN_PW="$(get_secret "${NAMESPACE}" keycloak-platform-admin password)" \
+    DASH_SECRET="$(get_secret "${NAMESPACE}" openshell-dashboard-oidc client-secret)" \
+    AUTO_SECRET="$(get_secret "${NAMESPACE}" openshell-automation-oidc client-secret)" \
+    SYNC_SECRET="$(get_secret "${NAMESPACE}" openshell-member-sync-oidc client-secret)" <<'IN'
 gid() {  # no awk in the Keycloak image
     while IFS=, read -r i n; do [ "$n" = "$1" ] && { echo "$i"; return; }; done \
         < <($KC get groups -r "$R" "${CFG[@]}" -q search="$1" -q exact=true --fields id,name --format csv --noquotes)
@@ -61,7 +51,7 @@ for role in admin user; do
 done
 API_ROLES=$($KC get "clients/$API_ID/roles" -r "$R" "${CFG[@]}")
 scope_to_api() {  # login client may carry this gateway's roles, nothing else
-    $KC create "clients/$(cid "$1")/scope-mappings/clients/$API_ID" -r "$R" "${CFG[@]}" -b "$API_ROLES" >/dev/null 2>&1 || true
+    $KC create "clients/$(cid "$1")/scope-mappings/clients/$API_ID" -r "$R" "${CFG[@]}" -b "$API_ROLES" >/dev/null
 }
 
 ensure_client "$CLI" -s publicClient=true -s standardFlowEnabled=true -s directAccessGrantsEnabled=false \
@@ -94,6 +84,8 @@ ensure_group "$GP-ws-default-users" user
 uid() { $KC get users -r "$R" "${CFG[@]}" -q username="$1" -q exact=true --fields id --format csv --noquotes | head -1; }
 [ -n "$(uid platform-admin)" ] || $KC create users -r "$R" "${CFG[@]}" -s username=platform-admin -s enabled=true \
     -s emailVerified=true -s email=platform-admin@example.com -s firstName=Platform -s lastName=Admin >/dev/null
+# The Secret is where the password is kept, so every run sets the user's password to it
+# (verify.sh signs in with the Secret). To change the password, change the Secret and re-run.
 $KC set-password -r "$R" "${CFG[@]}" --username platform-admin --new-password "$ADMIN_PW"
 $KC update "users/$(uid platform-admin)/groups/$(gid "$GP-admins")" -r "$R" "${CFG[@]}" -n >/dev/null
 echo "realm configured"

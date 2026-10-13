@@ -14,12 +14,11 @@ if [[ -n "${KEYCLOAK_CA_FILE}" ]]; then
     # The chart hands this file to the gateway as SSL_CERT_FILE, which replaces every trust root
     # the gateway has, not only the issuer's. Include the OpenShift service CA so the gateway
     # still trusts in-cluster services (for example the SPIRE OIDC discovery provider).
-    bundle=$(mktemp)
+    bundle=$(mktemp); trap 'rm -f "${bundle}"' EXIT
     cat "${KEYCLOAK_CA_FILE}" > "${bundle}"
     oc -n "${NAMESPACE}" get configmap openshift-service-ca.crt -o jsonpath='{.data.service-ca\.crt}' >> "${bundle}"
     oc -n "${NAMESPACE}" create configmap keycloak-ca --from-file=ca.crt="${bundle}" \
         --dry-run=client -o yaml | oc apply -f - >/dev/null
-    rm -f "${bundle}"
     ca_cm=keycloak-ca
     log "gateway and dashboard proxy will trust the CA in ConfigMap keycloak-ca"
 fi
@@ -35,8 +34,9 @@ url="https://$(oc -n "${NAMESPACE}" get route openshell -o jsonpath='{.spec.host
 openshell gateway remove "${CLI_GATEWAY_NAME}" >/dev/null 2>&1 || true
 dir="${HOME}/.config/openshell/gateways/${CLI_GATEWAY_NAME}/mtls"
 mkdir -p "${dir}"
-oc -n "${NAMESPACE}" get secret openshell-client-tls -o jsonpath='{.data.ca\.crt}' | base64 -d > "${dir}/ca.crt"
-OPENSHELL_OIDC_CLIENT_SECRET="$(oc -n "${NAMESPACE}" get secret openshell-automation-oidc -o jsonpath='{.data.client-secret}' | base64 -d)" \
+get_secret "${NAMESPACE}" openshell-client-tls 'ca\.crt' > "${dir}/ca.crt"
+[[ -s "${dir}/ca.crt" ]] || die "Secret ${NAMESPACE}/openshell-client-tls has no ca.crt; is the gateway installed?"
+OPENSHELL_OIDC_CLIENT_SECRET="$(get_secret "${NAMESPACE}" openshell-automation-oidc client-secret)" \
     openshell gateway add "${url}" --name "${CLI_GATEWAY_NAME}" --oidc-issuer "${ISSUER}" \
     --oidc-client-id "${AUTOMATION_CLIENT}" --oidc-audience "${GATEWAY_AUDIENCE}"
 log "gateway requires OIDC; CLI entry ${CLI_GATEWAY_NAME} signs in as ${AUTOMATION_CLIENT}"

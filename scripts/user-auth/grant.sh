@@ -11,9 +11,6 @@ user=${1:?usage: grant.sh <username> <workspace> [user|admin]}; ws=${2:?workspac
 [[ "${user}" =~ ^[A-Za-z0-9._@-]+$ ]] || { echo "ERROR: invalid username" >&2; exit 1; }
 
 kc_exec U="${user}" G="${GROUP_PREFIX}-ws-${ws}-${role}s" API="${API_CLIENT}" <<'IN'
-set -euo pipefail
-KC=/opt/keycloak/bin/kcadm.sh; CFG=(--config /tmp/kcadm.config)
-$KC config credentials "${CFG[@]}" --server http://localhost:8080 --realm master --user admin --password "$KC_ADMIN_PW" >/dev/null 2>&1
 gid() {  # no awk in the Keycloak image
     while IFS=, read -r i n; do [ "$n" = "$G" ] && { echo "$i"; return; }; done \
         < <($KC get groups -r "$R" "${CFG[@]}" -q search="$G" -q exact=true --fields id,name --format csv --noquotes)
