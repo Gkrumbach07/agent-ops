@@ -2,10 +2,10 @@
 
 set -euo pipefail
 
-# The validated gateway build is upstream main @ 8719fc9, which has no tagged CLI release.
-# The installer below comes from that commit; it installs the rolling "dev" CLI, which can be
-# newer than the gateway. The CLI used in validation was built from source at 8719fc9.
-readonly OPENSHELL_VERSION="dev"
+# The CLI release that the validated gateway build (v0.1.2-rhaiv.5) is based on. The installer
+# below is pinned to a commit and checked against INSTALLER_SHA256; it downloads this release and
+# checks it against the checksums published with the release.
+readonly OPENSHELL_VERSION="v0.1.2"
 readonly INSTALLER_COMMIT="8719fc9f37a93dd96435cf6753ae53c8ee8809e6"
 readonly INSTALLER_SHA256="5c98a86a4b811c471b212219cb2a62d458244220ffa71ac8e3baf3700b17b871"
 readonly INSTALLER_URL="https://raw.githubusercontent.com/NVIDIA/OpenShell/${INSTALLER_COMMIT}/install.sh"

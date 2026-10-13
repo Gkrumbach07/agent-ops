@@ -3,7 +3,7 @@
 # The image needs a shell and the agent's binaries under /usr. It does not need any OpenShell
 # component: the Kubernetes driver injects the sandbox runtime with an init container. It does
 # not need iproute2, nftables or nsenter, and it does not need to create /sandbox.
-FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6
 
 RUN microdnf install -y python3.12 && microdnf clean all
 
@@ -11,3 +11,7 @@ RUN microdnf install -y python3.12 && microdnf clean all
 # Python HTTPS needs this shim on RHCOS 9 kernels. Remove it once you run a build with the fix.
 COPY sitecustomize.py /usr/lib/python3.12/site-packages/sitecustomize.py
 COPY agent.py /usr/local/bin/agent.py
+
+# Not root. OpenShift's restricted-v2 SCC assigns a UID from the namespace's range anyway; this
+# covers runtimes that do not.
+USER 1001

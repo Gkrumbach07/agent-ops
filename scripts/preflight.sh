@@ -4,7 +4,7 @@
 #   --token-exchange  also check the prerequisites of install/03-agent-identity.md
 #   --user-auth       also check install/02-user-auth.md (implies --token-exchange)
 # Exits non-zero if a required check fails. Warnings do not fail the run.
-set -uo pipefail
+set -uo pipefail   # no -e: every check runs and failures are counted, so one failed command must not end the run
 
 TOKEN_EXCHANGE=false; USER_AUTH=false
 for arg in "$@"; do
@@ -56,7 +56,9 @@ oc auth can-i '*' '*' --all-namespaces >/dev/null 2>&1 && pass "cluster-admin pe
 default_sc=$(oc get storageclass -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{end}')
 [[ -n "${default_sc}" ]] && pass "default storage class: ${default_sc}" || fail "no default storage class; sandboxes and the gateway need PVCs"
 kernel=$(oc get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[0].status.nodeInfo.kernelVersion}' 2>/dev/null)
-if version_ge "${kernel%%-*}" "5.19"; then
+if [[ -z "${kernel}" ]]; then
+    warn "could not read a worker node's kernel version (no node has the worker role?); sandboxes need Linux 5.19 or later for full Landlock support"
+elif version_ge "${kernel%%-*}" "5.19"; then
     pass "worker kernel ${kernel}"
 else
     warn "worker kernel ${kernel} is before Linux 5.19: sandboxes run in legacy read-only mode (Python HTTPS and some servers need workarounds; see install/01-install.md)"
@@ -99,9 +101,9 @@ if [[ "${USER_AUTH}" == true ]]; then
     echo "User authentication"
     domain=$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}' 2>/dev/null)
     if curl -s -m 10 -o /dev/null "https://console-openshift-console.${domain}/"; then
-        pass "Route certificates on *.${domain} are publicly trusted"
+        pass "the default Route certificate on *.${domain} is publicly trusted (checked on the console Route)"
     else
-        warn "Route certificates on *.${domain} are not publicly trusted: set KEYCLOAK_CA_FILE to the CA that signs them before make user-auth (see install/02-user-auth.md)"
+        warn "the default Route certificate on *.${domain} is not publicly trusted (checked on the console Route): set KEYCLOAK_CA_FILE to the CA that signs them before make user-auth (see install/02-user-auth.md)"
     fi
 fi
 

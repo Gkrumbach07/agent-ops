@@ -1,6 +1,8 @@
-# OpenShell dashboard 1.2.0, connected to the in-cluster gateway with the chart's mTLS client bundle.
-# No Route: open it with `oc port-forward svc/openshell-dashboard 8080:8080`. AUTH_DISABLED makes every
-# caller a platform admin, so never expose this Service outside the cluster.
+# OpenShell dashboard 0.1.0, connected to the in-cluster gateway with the chart's mTLS client bundle.
+# AUTH_DISABLED makes every caller a platform admin, so nothing may reach this pod over the network:
+# there is no Route, and the NetworkPolicy below admits no connection from any pod. Open the
+# dashboard with `oc port-forward svc/openshell-dashboard 8080:8080`, which enters the pod through
+# the kubelet and is limited by your own cluster permissions.
 # Applied by `make dashboard`, which substitutes __NAMESPACE__.
 apiVersion: apps/v1
 kind: Deployment
@@ -15,7 +17,7 @@ spec:
     spec:
       containers:
         - name: dashboard
-          image: quay.io/gkrumbach07/openshell-dashboard:1.2.0
+          image: quay.io/gkrumbach07/openshell-dashboard:0.1.0@sha256:a362788f96ee709c96fc7917feed3f55b44f63e260247ae0787d4478c6d7c37e
           ports: [{containerPort: 8080}]
           env:
             - {name: OPENSHELL_GATEWAY_URL, value: "https://openshell.__NAMESPACE__.svc:8080"}
@@ -40,3 +42,13 @@ metadata: {name: openshell-dashboard}
 spec:
   selector: {app: openshell-dashboard}
   ports: [{port: 8080, targetPort: 8080}]
+---
+# No ingress rule: no pod, in this namespace or another, can connect to the dashboard pod.
+# `make user-auth` replaces this policy with one that admits the OpenShift router to the login proxy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: openshell-dashboard}
+spec:
+  podSelector: {matchLabels: {app: openshell-dashboard}}
+  policyTypes: [Ingress]
+  ingress: []

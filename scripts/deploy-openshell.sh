@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# OpenShell deployment for OpenShift, pinned to the build validated on OCP 4.20:
-# upstream main @ 8719fc9 (chart 0.0.0-dev.8719fc9..., images tagged with the same commit)
+# OpenShell deployment for OpenShift, pinned to the validated build (README, "What was validated"):
+# Red Hat images v0.1.2-rhaiv.5, built from upstream main @ e7fdd6b, with the upstream chart
+# 0.0.0-dev.e7fdd6b... for that same commit.
 # Based on opendatahub-io/agent-ops pinned version testing
 
 set -euo pipefail
@@ -13,7 +14,16 @@ NAMESPACE="${OPENSHELL_NAMESPACE:-openshell}"
 GATEWAY_NAME="${OPENSHELL_GATEWAY_NAME:-openshift}"
 # Validated build: Red Hat (ODH) images v0.1.2-rhaiv.5, built from upstream main @ e7fdd6b,
 # with the upstream development chart for that same commit.
-HELM_VERSION="${OPENSHELL_HELM_VERSION:-0.0.0-dev.e7fdd6beef98f7f92d86271a169fdd4d3be44cf3}"
+DEFAULT_HELM_VERSION="0.0.0-dev.e7fdd6beef98f7f92d86271a169fdd4d3be44cf3"
+HELM_VERSION="${OPENSHELL_HELM_VERSION:-${DEFAULT_HELM_VERSION}}"
+# SHA-256 of the chart archive. A chart version is a tag in the registry and a tag can be moved, so
+# the archive is checked before it is installed. For another OPENSHELL_HELM_VERSION set
+# OPENSHELL_HELM_SHA256 to that chart's checksum; without one the chart is installed unchecked.
+if [[ "${HELM_VERSION}" == "${DEFAULT_HELM_VERSION}" ]]; then
+    HELM_SHA256="${OPENSHELL_HELM_SHA256:-66a5d6d91c111db2e7b0b2e1a2bb61ba5bd916f2116822c2c44cc57e6b8c4879}"
+else
+    HELM_SHA256="${OPENSHELL_HELM_SHA256:-}"
+fi
 # Product images (quay.io/opendatahub/odh-openshell-*). Set ODH_IMAGE_TAG= (empty) to use the
 # upstream images the chart selects instead (ghcr.io/nvidia/openshell/*:<chart commit>).
 ODH_IMAGE_TAG="${ODH_IMAGE_TAG-v0.1.2-rhaiv.5}"
@@ -61,6 +71,11 @@ fi
 
 if [[ ! "$HELM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
     echo "ERROR: Invalid Helm version. Must be semver, optionally with a pre-release (e.g., 0.0.0-dev.<commit>)." >&2
+    exit 1
+fi
+
+if [[ -n "$HELM_SHA256" && ! "$HELM_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "ERROR: Invalid OPENSHELL_HELM_SHA256. Must be 64 hexadecimal characters." >&2
     exit 1
 fi
 
@@ -188,7 +203,8 @@ setup_namespace() {
     # privileged SCC grant is needed.
 
     # Add SCC for certgen job
-    oc adm policy add-scc-to-user restricted-v2 -z openshell-certgen -n "${NAMESPACE}" 2>/dev/null || true
+    oc adm policy add-scc-to-user restricted-v2 -z openshell-certgen -n "${NAMESPACE}" \
+        || log_warn "Could not grant restricted-v2 to the openshell-certgen service account; if the certificate job's pod is not admitted, this is why."
 }
 
 # Install OpenShell via Helm
@@ -205,8 +221,35 @@ install_helm() {
     ROUTE_HOSTNAME="openshell-${NAMESPACE}.${INGRESS_DOMAIN}"
     log_info "Route hostname for certificate SANs: ${ROUTE_HOSTNAME}"
 
+    # Download the chart, check it, and install from the checked archive.
+    CHART_DIR="$(mktemp -d)"
+    trap 'rm -rf "${CHART_DIR}"' EXIT
+    helm pull oci://ghcr.io/nvidia/openshell/helm-chart --version "${HELM_VERSION}" --destination "${CHART_DIR}" > /dev/null
+    local chart="${CHART_DIR}/helm-chart-${HELM_VERSION}.tgz"
+    if [[ ! -f "${chart}" ]]; then
+        log_error "helm pull did not produce ${chart}"
+        exit 1
+    fi
+    if [[ -n "${HELM_SHA256}" ]]; then
+        local actual_sha256
+        if command -v sha256sum &> /dev/null; then
+            actual_sha256="$(sha256sum "${chart}" | awk '{print $1}')"
+        elif command -v shasum &> /dev/null; then
+            actual_sha256="$(shasum --algorithm 256 "${chart}" | awk '{print $1}')"
+        else
+            log_error "sha256sum or shasum is required to verify the Helm chart."
+            exit 1
+        fi
+        if [[ "${actual_sha256}" != "${HELM_SHA256}" ]]; then
+            log_error "Helm chart ${HELM_VERSION} has SHA-256 ${actual_sha256}, expected ${HELM_SHA256}; refusing to install it."
+            exit 1
+        fi
+        log_info "Verified Helm chart SHA-256: ${HELM_SHA256}"
+    else
+        log_warn "No checksum for chart ${HELM_VERSION} (OPENSHELL_HELM_SHA256 is not set); installing it unchecked."
+    fi
+
     local helm_args=(
-        --version "${HELM_VERSION}"
         --namespace "${NAMESPACE}"
         --set podSecurityContext.fsGroup=null
         --set securityContext.runAsUser=null
@@ -245,14 +288,14 @@ install_helm() {
         if helm upgrade --help 2>/dev/null | grep -q -- '--force-conflicts'; then
             helm_args+=(--force-conflicts)
         fi
-        helm upgrade openshell oci://ghcr.io/nvidia/openshell/helm-chart "${helm_args[@]}"
+        helm upgrade openshell "${chart}" "${helm_args[@]}"
         if oc -n "${NAMESPACE}" get deploy keycloak-registrar &> /dev/null; then
             log_warn "Helm reset the gateway's interceptor registration."
             log_warn "Re-run scripts/token-exchange/05-deploy-registrar.sh (make token-exchange does this)."
         fi
     else
         log_info "Installing OpenShell ${HELM_VERSION}..."
-        helm install openshell oci://ghcr.io/nvidia/openshell/helm-chart "${helm_args[@]}"
+        helm install openshell "${chart}" "${helm_args[@]}"
     fi
 
     log_info "OpenShell installed successfully"
