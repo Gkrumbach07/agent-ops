@@ -160,7 +160,8 @@ The script deploys a `whoami-api` that verifies Keycloak tokens, gives OpenShell
 provider holding Alice's token, starts a sandbox, and calls the API from inside it
 with plain `curl`. You should see the JSON at the top of this page. The script checks
 the answer and fails unless the API returned 200 with Alice as `preferred_username`,
-`whoami-api` in `aud`, and the sandbox's own identity as `azp`.
+`whoami-api` in `aud`, and a sandbox identity of this namespace as `azp`. It does not
+compare `azp` with the id of the sandbox it started.
 
 The `whoami-api` pod installs PyJWT from PyPI when it starts. On a cluster without
 egress to `pypi.org` and `files.pythonhosted.org`, point `PIP_INDEX_URL` on its

@@ -22,7 +22,7 @@ if [[ -n "${KEYCLOAK_CA_FILE}" ]]; then
 fi
 
 DASHBOARD_IMAGE="${DASHBOARD_IMAGE:-quay.io/gkrumbach07/openshell-dashboard:0.1.0@sha256:a362788f96ee709c96fc7917feed3f55b44f63e260247ae0787d4478c6d7c37e}"
-OAUTH2_PROXY_IMAGE="${OAUTH2_PROXY_IMAGE:-quay.io/oauth2-proxy/oauth2-proxy:v7.15.5}"
+OAUTH2_PROXY_IMAGE="${OAUTH2_PROXY_IMAGE:-quay.io/oauth2-proxy/oauth2-proxy:v7.15.5@sha256:8498b0d0ef0a7b29686414000a08aee467f02d0299c9ed1e006a8f33fc017916}"
 for v in "${DASHBOARD_IMAGE}" "${OAUTH2_PROXY_IMAGE}"; do
     [[ "${v}" =~ ^[A-Za-z0-9][A-Za-z0-9._/:@-]*$ ]] || die "invalid image reference: ${v}"
 done

@@ -134,7 +134,8 @@ answer="$(openshell sandbox exec --name "${SANDBOX}" --no-tty -- curl -sS -w '\n
 status="${answer##*$'\n'}"; claims="${answer%$'\n'*}"
 echo "${claims}"
 # The API answers 200 only for a token Keycloak signed for audience ${TARGET_API}. The claims it
-# echoes show whose token it is and which client it was issued to.
+# echoes show whose token it is and which client it was issued to. azp is checked as far as "a
+# sandbox of this namespace": the full value ends in the sandbox's id, which is not compared.
 sandbox_prefix="${TRUST_DOMAIN}/openshell/sandbox/${NAMESPACE}."
 [[ "${status}" == 200 ]] || die "the API answered ${status}, want 200: the sandbox did not get a token the API accepts"
 jq -e --arg user "${DEMO_USER}" --arg aud "${TARGET_API}" --arg azp "${sandbox_prefix}" '
@@ -142,5 +143,5 @@ jq -e --arg user "${DEMO_USER}" --arg aud "${TARGET_API}" --arg azp "${sandbox_p
     and ((.aud | if type == "array" then . else [.] end) | index($aud) != null)
     and ((.azp // "") | startswith($azp))' >/dev/null <<<"${claims}" \
     || die "want preferred_username=${DEMO_USER}, aud ${TARGET_API} and azp=${sandbox_prefix}os-supervisor-<sandbox-id>.<sandbox-id>"
-log "PASS: the API saw ${DEMO_USER}, with the token issued to this sandbox's own identity"
+log "PASS: the API saw ${DEMO_USER}, with the token issued to a sandbox identity of namespace ${NAMESPACE}"
 log "clean up with: openshell sandbox delete ${SANDBOX}"
