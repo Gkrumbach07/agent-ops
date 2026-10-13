@@ -10,6 +10,8 @@ The install guide runs the gateway with `allowUnauthenticatedUsers=true`: every 
 
 It covers people. Sandbox identity (an agent calling an API as the user) is the [token-exchange guide](03-agent-identity.md); both use the same Keycloak realm and issuer.
 
+**Already run Keycloak?** `make user-auth` deploys its own Keycloak in dev mode. To get the same result on a Keycloak you operate, configure it by hand with [User authentication with your own Keycloak](02-user-auth-keycloak.md). [Workspaces and membership](02-user-auth-workspaces.md) goes deeper on workspace layout, finding a user's subject (Keycloak and Entra ID), delegation, and offboarding.
+
 ## How access works
 
 Two checks decide every request, and one group membership satisfies both:

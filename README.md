@@ -65,9 +65,14 @@ This table is the single source of validated versions; the guides link here.
 The setup guides and their `make` targets were run end to end on this stack. Status as of
 2026-10-06.
 
-The scripts as changed in review were run on a second stack on 2026-10-13, and the table says so
-where it differs: OpenShift 4.21.0 (ROSA), the same OpenShell build, CLI release `0.1.2` and
-dashboard `0.1.0`. Run there: `make deploy`, `make dashboard`, the steps of `make user-auth`
+The by-hand guides, [User authentication with your own Keycloak](install/02-user-auth-keycloak.md)
+and [Workspaces and membership](install/02-user-auth-workspaces.md), were run on a second stack
+on 2026-10-07, and the table says so where it differs: OpenShift 4.21.0 (ROSA), the same OpenShell
+build, CLI release `0.1.2`, upstream Keycloak 26.0 in dev mode, oauth2-proxy v7.15.5. Step 11 of
+the first was run there again on 2026-10-13 with dashboard `0.1.0`.
+
+The scripts as changed in review were run on that second stack on 2026-10-13, with CLI release
+`0.1.2` and dashboard `0.1.0`. Run there: `make deploy`, `make dashboard`, the steps of `make user-auth`
 (20 checks pass), `make grant`, `make revoke`, `make connect-info` and `make byo-agent`. That
 cluster has no Zero Trust Workload Identity Manager, so the gateway was deployed without SPIFFE
 and `make token-exchange` and `make try-it` have not been run with those changes. The check
@@ -121,7 +126,7 @@ The circled numbers map to the steps below. Source: [`install/images/setup-archi
 | Step | Guide | What you get | `make` |
 |---|---|---|---|
 | 1 | [Install OpenShell on OpenShift](install/01-install.md) | Gateway on the product images, Route, CLI connected, a first sandbox; optional dashboard | `deploy` |
-| 2 | [User authentication](install/02-user-auth.md) | People log in with Keycloak; access managed by groups; dashboard behind a login | `user-auth`, `grant`, `revoke`, `connect-info` |
+| 2 | [User authentication](install/02-user-auth.md)<br>By hand: [with your own Keycloak](install/02-user-auth-keycloak.md), [workspaces and membership](install/02-user-auth-workspaces.md) | People log in with Keycloak; access managed by groups; dashboard behind a login | `user-auth`, `grant`, `revoke`, `connect-info` |
 | 3 | [Agent identity: call your APIs as the user](install/03-agent-identity.md) | Each sandbox gets its own SPIFFE identity; the user's token is exchanged outside the sandbox (keycloak-registrar interceptor) | `token-exchange`, `try-it` |
 | 4 | [Bring your own agent image](install/04-agent-images.md) | What an agent image needs and a `ubi9/ubi-minimal` example | `byo-agent` |
 | 5 | [Kata runtime](install/05-kata-runtime.md) (optional) | Sandboxes in a Kata VM through a `RuntimeClass` (not re-validated with the current build) | |
