@@ -49,9 +49,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Server::builder()
         .tls_config(ServerTlsConfig::new().identity(identity))?
         .add_service(GatewayInterceptorServer::new(service))
-        .serve_with_shutdown(config.listen_addr, async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
+        .serve_with_shutdown(config.listen_addr, shutdown_signal())
         .await?;
     Ok(())
+}
+
+/// Resolves on SIGTERM, which is how Kubernetes stops a pod, or on Ctrl-C. Without the SIGTERM
+/// arm the process runs until the kubelet kills it at the end of the termination grace period,
+/// and a registration in flight is cut off.
+async fn shutdown_signal() {
+    use tokio::signal::unix::{SignalKind, signal};
+    match signal(SignalKind::terminate()) {
+        Ok(mut terminate) => {
+            tokio::select! {
+                _ = terminate.recv() => {}
+                _ = tokio::signal::ctrl_c() => {}
+            }
+        }
+        Err(_) => {
+            let _ = tokio::signal::ctrl_c().await;
+        }
+    }
 }

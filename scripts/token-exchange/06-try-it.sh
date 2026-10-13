@@ -51,8 +51,10 @@ spec:
     spec:
       containers:
         - name: api
-          image: registry.access.redhat.com/ubi9/python-312:latest
-          command: ["sh", "-c", "pip install -q --disable-pip-version-check 'pyjwt[crypto]' && exec python3 -u /app/server.py"]
+          image: registry.access.redhat.com/ubi9/python-312:9.6
+          # Installed from PyPI when the pod starts, so the cluster needs egress to pypi.org and
+          # files.pythonhosted.org or a mirror of them (PIP_INDEX_URL).
+          command: ["sh", "-c", "pip install -q --disable-pip-version-check 'pyjwt[crypto]==2.15.1' && exec python3 -u /app/server.py"]
           env:
             - {name: ISSUER, value: "${ISSUER}"}
             - {name: AUDIENCE, value: "${TARGET_API}"}
@@ -69,7 +71,10 @@ spec:
   selector: {app: ${TARGET_API}}
   ports: [{name: http, port: 80, targetPort: 8080}]
 EOF
-oc -n "${NAMESPACE}" rollout status deploy/"${TARGET_API}" --timeout=240s >/dev/null
+oc -n "${NAMESPACE}" rollout status deploy/"${TARGET_API}" --timeout=240s >/dev/null || {
+    oc -n "${NAMESPACE}" logs deploy/"${TARGET_API}" --tail=20 >&2 || true
+    die "the ${TARGET_API} demo API did not start; it installs pyjwt from PyPI, so check the log above for a blocked download"
+}
 
 # Re-runs: remove the previous demo in dependency order (a profile cannot be deleted
 # while a provider attached to a sandbox uses it).
@@ -111,17 +116,31 @@ EOF
 openshell profile import -f "${work}/profile.yaml" >/dev/null
 
 log "creating provider ${PROVIDER} with ${DEMO_USER}'s token"
-demo_pw="$(oc -n "${NAMESPACE}" get secret keycloak-demo-user -o jsonpath='{.data.password}' | base64 -d)"
-user_token="$(oc -n "${NAMESPACE}" exec deploy/"${TARGET_API}" -- curl -fsS "${REALM_INTERNAL_URL}/protocol/openid-connect/token" \
-    -d grant_type=password -d client_id=openshell-user -d username="${DEMO_USER}" \
-    --data-urlencode "password=${demo_pw}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
+# The password goes to curl in the pod on stdin: as an argument of `oc exec` it would be recorded in
+# the API server's audit log.
+user_token="$(get_secret "${NAMESPACE}" keycloak-demo-user password |
+    oc -n "${NAMESPACE}" exec -i deploy/"${TARGET_API}" -- curl -fsS "${REALM_INTERNAL_URL}/protocol/openid-connect/token" \
+        -d grant_type=password -d client_id=openshell-user -d username="${DEMO_USER}" --data-urlencode password@- |
+    jq -er .access_token)" || die "could not get a token for ${DEMO_USER} from Keycloak"
 openshell provider create --name "${PROVIDER}" --type "${PROFILE_ID}" \
     --credential "subject_token=${user_token}" >/dev/null
 
 log "starting sandbox ${SANDBOX} and calling ${API_HOST} from inside it"
 openshell sandbox create --name "${SANDBOX}" --from registry.access.redhat.com/ubi9/ubi-minimal:latest \
     --provider "${PROVIDER}" --no-auto-providers --detach >/dev/null
-openshell sandbox exec --name "${SANDBOX}" --no-tty -- curl -sS "http://${API_HOST}/"
-echo
-log "expected: preferred_username=${DEMO_USER}, azp=${TRUST_DOMAIN}/openshell/sandbox/${NAMESPACE}.os-supervisor-<sandbox-id>.<sandbox-id>"
+# curl prints the HTTP status on a last line of its own, after the API's JSON answer.
+answer="$(openshell sandbox exec --name "${SANDBOX}" --no-tty -- curl -sS -w '\n%{http_code}' "http://${API_HOST}/" </dev/null)" \
+    || die "the call from the sandbox failed; clean up with: openshell sandbox delete ${SANDBOX}"
+status="${answer##*$'\n'}"; claims="${answer%$'\n'*}"
+echo "${claims}"
+# The API answers 200 only for a token Keycloak signed for audience ${TARGET_API}. The claims it
+# echoes show whose token it is and which client it was issued to.
+sandbox_prefix="${TRUST_DOMAIN}/openshell/sandbox/${NAMESPACE}."
+[[ "${status}" == 200 ]] || die "the API answered ${status}, want 200: the sandbox did not get a token the API accepts"
+jq -e --arg user "${DEMO_USER}" --arg aud "${TARGET_API}" --arg azp "${sandbox_prefix}" '
+    .preferred_username == $user
+    and ((.aud | if type == "array" then . else [.] end) | index($aud) != null)
+    and ((.azp // "") | startswith($azp))' >/dev/null <<<"${claims}" \
+    || die "want preferred_username=${DEMO_USER}, aud ${TARGET_API} and azp=${sandbox_prefix}os-supervisor-<sandbox-id>.<sandbox-id>"
+log "PASS: the API saw ${DEMO_USER}, with the token issued to this sandbox's own identity"
 log "clean up with: openshell sandbox delete ${SANDBOX}"

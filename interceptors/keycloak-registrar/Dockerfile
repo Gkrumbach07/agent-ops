@@ -10,7 +10,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 RUN cargo build --release --locked
 
-FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6
 COPY --from=build /src/target/release/keycloak-registrar-interceptor /usr/local/bin/keycloak-registrar-interceptor
 USER 1001
 ENTRYPOINT ["/usr/local/bin/keycloak-registrar-interceptor"]

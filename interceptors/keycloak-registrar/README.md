@@ -72,7 +72,7 @@ interceptor logs.
 
 The easiest path is `scripts/token-exchange/05-deploy-registrar.sh`, which builds
 the image on your cluster, deploys it, and registers it with the gateway. See
-[the token-exchange guide](../../guides/spiffe-token-exchange-keycloak.md).
+[the token-exchange guide](../../install/03-agent-identity.md).
 
 To do it by hand, build the image on the cluster from this directory (the
 `Dockerfile` compiles from source; no local Rust toolchain is needed):
@@ -112,3 +112,6 @@ Keycloak admin calls against an in-memory mock, and the `Describe` and
 - The gateway calls `Describe` at startup and does not start while the
   interceptor is unreachable.
 - Registration changes require a gateway restart.
+- `manage-clients` applies to every client in the realm, not only to the clients
+  this interceptor creates. Run it against a realm that holds nothing else, or
+  restrict its service account with Keycloak's fine-grained admin permissions.
