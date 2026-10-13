@@ -2,13 +2,14 @@
 
 > **Midstream Documentation**
 >
-> Run end to end as written on 2026-10-07: OpenShift 4.21.0, the Red Hat build `v0.1.2-rhaiv.5`
-> with chart `0.0.0-dev.e7fdd6b…`, CLI 0.1.2, oauth2-proxy v7.15.5, upstream Keycloak 26.0, two
-> gateways in one realm. The browser logins were driven with `curl` and the CLI signed in as a
-> service account, so the two interactive moments (the Keycloak login page, `openshell gateway add`
-> opening a browser) are the only parts not done by hand. Only Keycloak has been tested; Microsoft
-> Entra ID has not. Keycloak itself ran in dev mode for the test. Step 11 was run again on
-> 2026-10-13 with dashboard `0.1.0`, for one gateway.
+> Run end to end as written on 2026-10-13: OpenShift 4.21.0, the installer at commit `b99e4c2` with
+> gateway chart 0.1.3, the Red Hat build `v0.1.3-rhaiv.3`, dashboard 0.1.0 and oauth2-proxy v7.15.2,
+> CLI 0.1.2, upstream Keycloak 26.0 in dev mode, two gateways in one realm. Three things were not
+> done the way a person would do them: the realm was configured with `kcadm.sh`, following steps 1
+> to 6, instead of in the Keycloak console; the browser logins were driven with `curl`; and the CLI
+> signed in as a service account instead of opening a browser. Only Keycloak has been tested;
+> Microsoft Entra ID has not. An earlier version of this guide, which installed the gateway and the
+> dashboard with Helm commands and a manifest instead of the installer, was run on 2026-10-07.
 
 This guide describes how to deploy two independent OpenShell gateways and dashboards in an OpenShift cluster while using one externally managed Keycloak realm for authentication. Namespace A accepts `administrators-a` and `users-a`. Namespace B accepts `administrators-b` and `users-b`. Mary and Cameron are standard users in namespace A, and Joe is a standard user in namespace B. End users do not need OpenShift accounts.
 
@@ -84,7 +85,7 @@ OpenShell OIDC RBAC controls API methods. Provider and sandbox records remain ga
 | Cameron | `users-a` | Allowed | Standard user | Denied | Denied |
 | Joe | `users-b` | Denied | Denied | Allowed | Standard user |
 
-Mary, Cameron, and Joe do not need OpenShift `User` objects, OpenShift `Group` objects, `OAuthClient` resources, project membership, or Kubernetes RBAC bindings. Their identities, group membership, and application roles exist only in Keycloak. What they do need inside OpenShell is a workspace membership, which is [Step 14](#step-14-add-workspace-members).
+Mary, Cameron, and Joe do not need OpenShift `User` objects, OpenShift `Group` objects, `OAuthClient` resources, project membership, or Kubernetes RBAC bindings. Their identities, group membership, and application roles exist only in Keycloak. What they do need inside OpenShell is a workspace membership, which is [Step 13](#step-13-add-workspace-members).
 
 ## Values to collect before installation
 
@@ -94,17 +95,17 @@ Mary, Cameron, and Joe do not need OpenShift `User` objects, OpenShift `Group` o
 | Realm and issuer | `openshell` and `KEYCLOAK_ISSUER` | Identity administrator |
 | API client IDs | `openshell-api-a` and `openshell-api-b` | Identity administrator |
 | Dashboard client IDs | `openshell-dashboard-a` and `openshell-dashboard-b` | Identity administrator |
-| Dashboard client secrets | Stored only in Kubernetes Secrets | Identity administrator |
+| Dashboard client secrets | A file next to the installer configuration, then a Kubernetes Secret | Identity administrator |
 | CLI client IDs | `openshell-cli-a` and `openshell-cli-b` | Identity administrator |
-| Keycloak CA | Public trust or `keycloak-ca` ConfigMap | Identity and platform teams |
-| Four public DNS names | `gateway-a`, `dashboard-a`, `gateway-b`, `dashboard-b` | Platform engineer |
+| Keycloak CA | Public trust, or a PEM file for the installer (`oidc.ca_file`) | Identity and platform teams |
+| Four public DNS names under the router's domain | `gateway-a`, `dashboard-a`, `gateway-b`, `dashboard-b` | Platform engineer |
 | Approved image versions | Pinned gateway, supervisor, dashboard, proxy | Platform engineer |
 
-The chart and image versions this guide was run with are set in Step 9 and Step 11. The cluster requirements are the same as for [installing OpenShell](getting-started-openshell-openshift.md#prerequisites); `jq` is used once, in Step 11.
+The chart and image versions this guide was run with are in the installer configuration in Step 9.
 
 ## Step by step setup
 
-Steps 1 to 7 are done in Keycloak, steps 8 to 12 on the cluster, and steps 13 to 15 with the `openshell` CLI and a browser.
+Steps 1 to 7 are done in Keycloak, steps 8 to 11 with the installer on the cluster, and steps 12 to 14 with the `openshell` CLI and a browser.
 
 ### Step 1: Prepare the Keycloak realm
 
@@ -197,289 +198,162 @@ The gateway never uses a Keycloak client secret. Its API client defines the `res
 }
 ```
 
-The `sub` value is the user's ID in the Keycloak console; Step 14 uses it.
+The `sub` value is the user's ID in the Keycloak console; Step 13 uses it.
 
-### Step 8: Prepare OpenShift namespaces and ingress
+### Step 8: Prepare the installer
 
-1. Create namespaces `namespace-a` and `namespace-b`.
-2. Reserve four external hostnames: `gateway-a`, `dashboard-a`, `gateway-b`, and `dashboard-b`. With the Routes below nothing needs issuing: each gateway serves the certificate the chart generates, with its hostname in it (Step 9), and the dashboard Routes use the cluster's default certificate.
-3. Expose each gateway through an HTTPS and HTTP/2 capable path such as a TLS passthrough `Route` (Step 9), or OpenShift Gateway API with `GRPCRoute` and `BackendTLSPolicy`.
-4. Expose each dashboard through a separate HTTPS `Route` that targets only oauth2-proxy port 4180 (Step 11).
-5. Allow gateway pods and dashboard proxy pods to reach the Keycloak issuer over HTTPS for discovery, JWKS, authorization, and token requests.
-6. If Keycloak uses a private CA, create `keycloak-ca` ConfigMaps in both namespaces from the approved CA certificate.
-
-```shell
-oc create namespace namespace-a
-oc create namespace namespace-b
-
-oc -n namespace-a create configmap keycloak-ca --from-file=ca.crt=/path/to/keycloak-ca.crt
-oc -n namespace-b create configmap keycloak-ca --from-file=ca.crt=/path/to/keycloak-ca.crt
-```
-
-Omit the `keycloak-ca` ConfigMaps and `caConfigMapName` values when the issuer certificate chains to a CA already trusted by the images.
+The gateway and the dashboard are installed by the OpenShell installer for OpenShift, `deploy/rhoai/install.py` in [`opendatahub-io/openshell`](https://github.com/opendatahub-io/openshell). One run installs two Helm releases into one namespace: `openshell` (the gateway) and `openshell-dashboard` (the dashboard behind oauth2-proxy). It creates the namespace when it is missing, a passthrough `Route` for the gateway, an edge `Route` for the dashboard and the dashboard's `NetworkPolicy`. The installer's own README, in the same directory, covers reruns, upgrades and failures.
 
 > [!NOTE]
-> The chart gives this file to the gateway as its only set of trust roots, not as an addition to the system ones. If the gateway must also trust in-cluster services, put their CA in the same `ca.crt`, for example the OpenShift service CA.
+> When this guide was written the installer was still a pull request, [opendatahub-io/openshell#101](https://github.com/opendatahub-io/openshell/pull/101). The guide was run with it at commit `b99e4c2`. Until it is merged, check out the pull request as shown below.
 
-### Step 9: Install Gateway A
-
-The Helm command has the shape of the one in [Install OpenShell with Helm](getting-started-openshell-openshift.md#install-openshell-with-helm), on the build this guide was run with. The two variables select the chart and the Red Hat build images: workspaces and this OIDC configuration need a 0.1.x gateway, and the 0.1.x chart names its image values differently from the 0.0.116 chart. The release goes into `namespace-a`, and the values file below turns on OIDC and refuses unauthenticated callers.
-
-Create `values-namespace-a.yaml` and adapt the issuer and the optional Keycloak CA setting:
-
-```yaml
-server:
-  auth:
-    allowUnauthenticatedUsers: false
-  oidc:
-    issuer: https://keycloak.example.com/realms/openshell
-    audience: openshell-api-a
-    rolesClaim: resource_access.openshell-api-a.roles
-    adminRole: administrators-a
-    userRole: users-a
-    caConfigMapName: keycloak-ca
-```
-
-Install with the SQLite option and expose the gateway through a passthrough `Route`:
+1. On the workstation you need `uv`, Helm, `kubectl`, `jq` and a kubeconfig context with the rights to install both charts. The cluster needs Agent Sandbox and a default StorageClass, as for [installing OpenShell](getting-started-openshell-openshift.md#prerequisites).
+2. Reserve two hostnames per namespace under the router's domain: one for the gateway and one for the dashboard. Nothing needs issuing: the gateway serves a certificate its chart generates, with the gateway hostname in it, and the dashboard `Route` uses the router's default certificate.
+3. The gateway pods and the dashboard proxy pods must reach the Keycloak issuer over HTTPS.
 
 ```shell
-OPENSHELL_CHART_VERSION=0.0.0-dev.e7fdd6beef98f7f92d86271a169fdd4d3be44cf3
-OPENSHELL_IMAGE_TAG=v0.1.2-rhaiv.5
-
-helm upgrade --install openshell oci://ghcr.io/nvidia/openshell/helm-chart \
-  --version "${OPENSHELL_CHART_VERSION}" \
-  --namespace namespace-a \
-  --set podSecurityContext.fsGroup=null \
-  --set securityContext.runAsUser=null \
-  --set "pkiInitJob.serverDnsNames[0]=gateway-a.example.com" \
-  --set global.image.registry=quay.io/opendatahub \
-  --set global.image.tag="${OPENSHELL_IMAGE_TAG}" \
-  --set gateway.image.repository=odh-openshell-gateway \
-  --set supervisor.image.repository=odh-openshell-supervisor \
-  --set sandboxRuntime.image.repository=odh-openshell-sandbox \
-  --values values-namespace-a.yaml
-
-oc -n namespace-a create route passthrough openshell \
-  --service=openshell --port=8080 --hostname=gateway-a.example.com
+git clone https://github.com/opendatahub-io/openshell.git
+cd openshell
+git fetch origin pull/101/head && git checkout --detach FETCH_HEAD   # until the installer is merged
 ```
 
-With a passthrough `Route` the gateway serves the certificate the chart generates, and `pkiInitJob.serverDnsNames` puts the external hostname in it. That certificate is signed by a CA private to the namespace, so CLI users need the CA file (Step 13). Leave `server.tls.enableMtls` at its default: once OIDC is on, the gateway accepts bearer-only clients and no longer signs anyone in from a client certificate.
+### Step 9: Install Gateway A and Dashboard A
 
-**Alternative: Gateway API.** On OpenShift 4.22 or later you can terminate TLS at an OpenShift Gateway and re-encrypt to the gateway pod instead of using a passthrough `Route`. Add these values, adapt the ingress names, and skip the `oc create route` command. This variant was not part of the validated run.
-
-```yaml
-server:
-  tls:
-    enableMtls: false
-
-grpcRoute:
-  enabled: true
-  gateway:
-    name: openshell-gateway
-    namespace: openshift-ingress
-  hostnames:
-    - gateway-a.example.com
-  backendTLSPolicy:
-    enabled: true
-```
-
-Keep server TLS enabled. Disabling client-certificate authentication allows OIDC callers to connect without a user certificate; it does not disable HTTPS between ingress and the gateway.
-
-Verify that the gateway pod is `Running` and that its log says `OIDC authentication enabled`. A pod that crash-loops with `OIDC initialization failed` cannot reach or verify the issuer: check the issuer URL, the `keycloak-ca` ConfigMap, and egress from the namespace.
+Keep the configuration outside the checkout. Save the dashboard client's secret from Step 5 next to it; the installer reads the file and puts the secret into a Kubernetes Secret, so it is never in the JSON, in Helm values or on a command line:
 
 ```shell
-oc -n namespace-a get pods
-oc -n namespace-a logs openshell-0 | grep OIDC
+mkdir -p "$HOME/.config/openshell-rhoai/namespace-a"
+chmod 700 "$HOME/.config/openshell-rhoai/namespace-a"
+(
+  umask 077
+  printf 'Dashboard A client secret: '; read -rs secret; echo
+  printf '%s' "${secret}" > "$HOME/.config/openshell-rhoai/namespace-a/dashboard-client-secret.txt"
+)
 ```
 
-### Step 10: Install Gateway B
+Create `$HOME/.config/openshell-rhoai/namespace-a/config.json`. Replace the context (`kubectl config current-context`), the two hostnames and the issuer:
 
-Copy the Gateway A values and change only the namespace-specific identity and hostname values:
-
-```yaml
-server:
-  oidc:
-    audience: openshell-api-b
-    rolesClaim: resource_access.openshell-api-b.roles
-    adminRole: administrators-b
-    userRole: users-b
+```json
+{
+  "namespace": "namespace-a",
+  "context": "REPLACE_WITH_KUBECONFIG_CONTEXT",
+  "gateway": {
+    "chart": "oci://ghcr.io/nvidia/openshell/helm-chart",
+    "version": "0.1.3",
+    "host": "gateway-a.example.com",
+    "images": {
+      "gateway": {"registry": "quay.io", "repository": "opendatahub/odh-openshell-gateway", "tag": "v0.1.3-rhaiv.3"},
+      "supervisor": {"registry": "quay.io", "repository": "opendatahub/odh-openshell-supervisor", "tag": "v0.1.3-rhaiv.3"},
+      "sandboxRuntime": {"registry": "quay.io", "repository": "opendatahub/odh-openshell-sandbox", "tag": "v0.1.3-rhaiv.3"}
+    }
+  },
+  "dashboard": {
+    "chart": "oci://ghcr.io/gkrumbach07/openshell-dashboard/helm-chart/openshell-dashboard",
+    "version": "0.1.0",
+    "host": "dashboard-a.example.com"
+  },
+  "oidc": {
+    "provider": "keycloak-oidc",
+    "issuer": "https://keycloak.example.com/realms/openshell",
+    "client_id": "openshell-dashboard-a",
+    "client_secret_file": "dashboard-client-secret.txt",
+    "audience": "openshell-api-a",
+    "roles_claim": "resource_access.openshell-api-a.roles",
+    "admin_role": "administrators-a",
+    "user_role": "users-a",
+    "allowed_roles": ["openshell-api-a:users-a", "openshell-api-a:administrators-a"]
+  }
+}
 ```
 
-Run the same `helm upgrade --install` and `oc create route` commands with `--namespace namespace-b`, `values-namespace-b.yaml`, and `gateway-b.example.com` as the hostname in both. With the Gateway API alternative, set the hostname in the values instead:
+The `oidc` section is where the Keycloak objects from steps 3 to 5 go:
 
-```yaml
-grpcRoute:
-  hostnames:
-    - gateway-b.example.com
-```
+| Installer setting | Value | What it does |
+|---|---|---|
+| `provider` | `keycloak-oidc` | Lets the proxy read Keycloak client roles, which `allowed_roles` needs |
+| `issuer` | The realm issuer from Step 1 | Both the gateway and the proxy validate tokens against it |
+| `client_id`, `client_secret_file` | The dashboard client from Step 5 | The proxy signs users in with it |
+| `audience` | The API client from Step 3 | The gateway accepts only tokens with this `aud` |
+| `roles_claim` | `resource_access.<API client>.roles` | Where the gateway reads the roles from |
+| `admin_role`, `user_role` | The two client roles from Step 3 | Gateway administrator and standard user |
+| `allowed_roles` | `<API client>:<role>`, one entry per role | The proxy refuses anyone without one of them, before the dashboard is reached |
 
-### Step 11: Deploy Dashboard A and oauth2-proxy
+Without `allowed_roles` every user of the realm reaches the dashboard and only the gateway refuses them. The `images` block selects the Red Hat build; without it the chart's own upstream images are used. If Keycloak uses a private CA, add `"ca_file": "keycloak-ca.crt"` to `oidc` and put the PEM file next to the JSON: the installer gives it to the gateway and to the proxy.
 
-This step applies one manifest: a pod with oauth2-proxy and the dashboard BFF, a `Service` and `Route` for the proxy port only, and a `NetworkPolicy`.
-
-Create the secret without placing client credentials or cookie keys in source control. The client secret is read from a prompt and handed to `oc` through a file descriptor, so it is in neither the shell history nor a process's arguments. The cookie secret must be 16, 24 or 32 bytes long:
+Check the configuration, check the cluster, then install. `--check` renders both charts without contacting the cluster, and `--preflight` checks the cluster without changing it:
 
 ```shell
-printf 'Dashboard A client secret: '; read -rs DASHBOARD_CLIENT_SECRET; echo
-oc -n namespace-a create secret generic dashboard-a-oidc \
-  --from-literal=client-id='openshell-dashboard-a' \
-  --from-file=client-secret=<(printf '%s' "${DASHBOARD_CLIENT_SECRET}") \
-  --from-file=cookie-secret=<(openssl rand -hex 16 | tr -d '\n')
-unset DASHBOARD_CLIENT_SECRET
+uv run --script --python 3.12 deploy/rhoai/install.py \
+  --config "$HOME/.config/openshell-rhoai/namespace-a/config.json" --check
+
+uv run --script --python 3.12 deploy/rhoai/install.py \
+  --config "$HOME/.config/openshell-rhoai/namespace-a/config.json" --preflight
+
+uv run --script --python 3.12 deploy/rhoai/install.py \
+  --config "$HOME/.config/openshell-rhoai/namespace-a/config.json"
 ```
 
-Set the variables, then apply the manifest. The two images are the ones this guide was run with, pinned by digest.
+The install takes about half a minute and ends with the two URLs:
+
+```text
+Dashboard: https://dashboard-a.example.com
+Gateway: https://gateway-a.example.com
+Register the gateway with the CLI using its CA, then log in through customer OIDC.
+An administrator must add users to workspaces. Verify login, denied access, sandbox creation and terminals.
+```
+
+What the installed pair enforces, each checked on the running deployment:
+
+- The proxy forwards the **access** token to the dashboard, and refreshes it every 2 minutes, before Keycloak's 5-minute default lifetime ends. A session was still valid 7 minutes after sign-in.
+- An expired session answers the dashboard's API calls with 401 instead of a redirect to the login page.
+- The proxy and the `Route` wait 120 and 300 seconds for the dashboard. Deleting a sandbox takes about 30 seconds and returns 200.
+- Only the proxy port 4180 is exposed, and the `NetworkPolicy` admits only the OpenShift router to it. The dashboard itself listens on the pod's loopback address, so no client can hand it forged authentication headers.
+- The dashboard pod holds the gateway's CA certificate and nothing else from the gateway's TLS secret. It can act only with the signed-in user's token.
+- The gateway refuses unauthenticated callers. TLS client certificates are not used to sign anyone in.
+
+### Step 10: Install Gateway B and Dashboard B
+
+Repeat Step 9 with a second directory, `$HOME/.config/openshell-rhoai/namespace-b`, and these replacements in the JSON. The charts, versions, images and issuer stay the same.
+
+| Namespace A | Namespace B |
+|---|---|
+| `namespace-a` | `namespace-b` |
+| `gateway-a.example.com` | `gateway-b.example.com` |
+| `dashboard-a.example.com` | `dashboard-b.example.com` |
+| `openshell-dashboard-a` and its secret | `openshell-dashboard-b` and its secret |
+| `openshell-api-a` (in `audience`, `roles_claim` and `allowed_roles`) | `openshell-api-b` |
+| `administrators-a`, `users-a` | `administrators-b`, `users-b` |
+
+### Step 11: Make sign-out end the Keycloak session
+
+As installed, **Sign out** in the dashboard ends only the proxy's session. The Keycloak session stays alive, and the next visit signs the same user in again without a password. The installer has no setting for this yet, and its `values_files` option refuses these values, so set three values of the dashboard chart on the installed release. Use the hostnames from your configuration:
 
 ```shell
 NS=namespace-a
+CONTEXT=$(kubectl config current-context)
 KEYCLOAK_HOST=keycloak.example.com
 ISSUER=https://${KEYCLOAK_HOST}/realms/openshell
-API_CLIENT=openshell-api-a
 DASHBOARD_CLIENT=openshell-dashboard-a
 DASHBOARD_HOST=dashboard-a.example.com
-OIDC_SECRET=dashboard-a-oidc
-ADMIN_ROLE=administrators-a
-USER_ROLE=users-a
-COOKIE_NAME=_openshell_a
-DASHBOARD_IMAGE=quay.io/gkrumbach07/openshell-dashboard:0.1.0@sha256:a362788f96ee709c96fc7917feed3f55b44f63e260247ae0787d4478c6d7c37e
-OAUTH2_PROXY_IMAGE=quay.io/oauth2-proxy/oauth2-proxy:v7.15.5@sha256:8498b0d0ef0a7b29686414000a08aee467f02d0299c9ed1e006a8f33fc017916
-# Signing out of the dashboard also ends the Keycloak session and returns to the dashboard.
-LOGOUT_URL="/oauth2/sign_out?rd=$(jq -rn --arg u "${ISSUER}/protocol/openid-connect/logout?client_id=${DASHBOARD_CLIENT}&post_logout_redirect_uri=https://${DASHBOARD_HOST}/" '$u|@uri')"
 
-oc -n "${NS}" apply -f - <<EOF
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: openshell-dashboard
-  labels: {app: openshell-dashboard}
-spec:
-  replicas: 1
-  selector: {matchLabels: {app: openshell-dashboard}}
-  template:
-    metadata: {labels: {app: openshell-dashboard}}
-    spec:
-      containers:
-        - name: oauth2-proxy
-          image: ${OAUTH2_PROXY_IMAGE}
-          args:
-            - --provider=keycloak-oidc
-            - --oidc-issuer-url=${ISSUER}
-            - --redirect-url=https://${DASHBOARD_HOST}/oauth2/callback
-            - --whitelist-domain=${KEYCLOAK_HOST}
-            - --scope=openid profile email
-            - --code-challenge-method=S256
-            - --allowed-role=${API_CLIENT}:${USER_ROLE}
-            - --allowed-role=${API_CLIENT}:${ADMIN_ROLE}
-            - --email-domain=*
-            - --upstream=http://127.0.0.1:8080/
-            - --upstream-timeout=120s
-            - --http-address=0.0.0.0:4180
-            - --pass-access-token=true
-            - --pass-user-headers=true
-            - --skip-provider-button=true
-            - --api-route=^/api/
-            - --cookie-name=${COOKIE_NAME}
-            - --cookie-secure=true
-            - --cookie-refresh=4m
-          env:
-            - name: OAUTH2_PROXY_CLIENT_ID
-              valueFrom: {secretKeyRef: {name: ${OIDC_SECRET}, key: client-id}}
-            - name: OAUTH2_PROXY_CLIENT_SECRET
-              valueFrom: {secretKeyRef: {name: ${OIDC_SECRET}, key: client-secret}}
-            - name: OAUTH2_PROXY_COOKIE_SECRET
-              valueFrom: {secretKeyRef: {name: ${OIDC_SECRET}, key: cookie-secret}}
-          ports: [{containerPort: 4180, name: http}]
-          readinessProbe: {httpGet: {path: /ping, port: 4180}, periodSeconds: 5}
-          securityContext: &restricted
-            allowPrivilegeEscalation: false
-            capabilities: {drop: [ALL]}
-            runAsNonRoot: true
-            seccompProfile: {type: RuntimeDefault}
-        - name: dashboard
-          image: ${DASHBOARD_IMAGE}
-          env:
-            - {name: LISTEN_ADDRESS, value: "127.0.0.1"}
-            - {name: OPENSHELL_GATEWAY_URL, value: "grpcs://openshell.${NS}.svc.cluster.local:8080"}
-            - {name: GATEWAY_CA_CERT, value: /etc/openshell-gateway/ca.crt}
-            - {name: AUTH_USER_HEADER, value: x-forwarded-user}
-            - {name: ADMIN_ROLE, value: "${ADMIN_ROLE}"}
-            - {name: LOGOUT_URL, value: "${LOGOUT_URL}"}
-          volumeMounts: [{name: gateway-ca, mountPath: /etc/openshell-gateway, readOnly: true}]
-          securityContext: *restricted
-      volumes:
-        - name: gateway-ca
-          secret: {secretName: openshell-client-tls, items: [{key: ca.crt, path: ca.crt}]}
----
-apiVersion: v1
-kind: Service
-metadata: {name: openshell-dashboard}
-spec:
-  selector: {app: openshell-dashboard}
-  ports: [{name: http, port: 4180, targetPort: 4180}]
----
-apiVersion: route.openshift.io/v1
-kind: Route
-metadata:
-  name: openshell-dashboard
-  annotations: {haproxy.router.openshift.io/timeout: 120s}   # deleting a sandbox takes about 30 s
-spec:
-  host: ${DASHBOARD_HOST}
-  to: {kind: Service, name: openshell-dashboard}
-  port: {targetPort: http}
-  tls: {termination: edge, insecureEdgeTerminationPolicy: Redirect}
----
-# Only the OpenShift router may open connections to the dashboard pod.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata: {name: openshell-dashboard}
-spec:
-  podSelector: {matchLabels: {app: openshell-dashboard}}
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels: {policy-group.network.openshift.io/ingress: ""}
-      ports: [{port: 4180, protocol: TCP}]
-EOF
-oc -n "${NS}" rollout status deploy/openshell-dashboard --timeout=180s
+LOGOUT_URL="/oauth2/sign_out?rd=$(jq -rn --arg u "${ISSUER}/protocol/openid-connect/logout?client_id=${DASHBOARD_CLIENT}&post_logout_redirect_uri=https://${DASHBOARD_HOST}/" '$u|@uri')"
+jq -n --arg logout "${LOGOUT_URL}" --arg keycloak "${KEYCLOAK_HOST}" \
+  '{dashboard: {logoutURL: $logout}, authProxy: {whitelistDomains: [$keycloak], extraArgs: ["--skip-provider-button=true"]}}' \
+  > sign-out-values.json
+
+helm --kube-context "${CONTEXT}" -n "${NS}" upgrade openshell-dashboard \
+  oci://ghcr.io/gkrumbach07/openshell-dashboard/helm-chart/openshell-dashboard --version 0.1.0 \
+  --reuse-values -f sign-out-values.json --wait
 ```
 
-The Route starts answering a few seconds after the rollout finishes. Every BFF setting not listed is the BFF's default (`AUTH_DISABLED=false`, the `x-forwarded-access-token` header, port 8080). Five of the proxy settings decide whether the dashboard works, and each was checked by leaving it out:
+Signing out then goes to Keycloak's logout page, which asks the user to confirm, and the next visit asks for a password. The chart leaves out `--skip-provider-button` once a redirect domain is allowed, which is why the third value adds it back.
 
-- `--pass-access-token=true` forwards the **access** token in `X-Forwarded-Access-Token`. The gateway rejects an ID token, because its audience is the dashboard client, not the API client.
-- `--cookie-refresh=4m` makes the proxy renew the access token before it expires (5 minutes by default in Keycloak). Without it the proxy keeps forwarding the expired token and, after about 6 minutes, every call fails with `invalid token: ExpiredSignature` while the dashboard still shows the user as signed in.
-- `--api-route=^/api/` makes an expired session answer the dashboard's API calls with 401 instead of a redirect to the login page.
-- `--upstream-timeout=120s` together with the Route's `haproxy.router.openshift.io/timeout`: deleting a sandbox takes about 30 seconds (the sandbox pod's termination grace period) and the BFF waits for it, so with the 30-second defaults the delete reports `504 Gateway Time-out` although it completes.
-- `--whitelist-domain` with the `LOGOUT_URL` above: signing out ends the Keycloak session as well, through Keycloak's logout page, which asks the user to confirm. With the plain `/oauth2/sign_out` only the dashboard session ends, and the next visit signs the same user in again without a password.
+> [!IMPORTANT]
+> The installer replaces the release's values on every run. Repeat this step after each run of the installer, for each namespace, until the installer has a setting for it.
 
-What the manifest enforces:
+### Step 12: Configure the laptop CLI
 
-- Only proxy port 4180 is exposed through the `Service` and `Route`.
-- The BFF binds to pod loopback so clients cannot inject trusted authentication headers directly.
-- The gateway CA is mounted read-only, and only the `ca.crt` key of the chart's TLS secret is projected: no gateway client private key reaches the pod, so the BFF can act only with the signed-in user's token.
-- `--email-domain=*` is deliberate: the proxy does not filter by e-mail address. Who may open the dashboard is decided by `--allowed-role` alone, so a user without one of this gateway's two roles is refused whatever their address.
-- The `NetworkPolicy` lets no other pod reach the dashboard pod. If the cluster's router runs on the host network, add a second `namespaceSelector` for `policy-group.network.openshift.io/host-network: ""`.
-
-If Keycloak uses a private CA, oauth2-proxy must trust it as well: mount the `keycloak-ca` ConfigMap into the proxy container and add `--provider-ca-file=/etc/keycloak-ca/ca.crt` and `--use-system-trust-store=true`.
-
-### Step 12: Deploy Dashboard B
-
-Repeat Step 11 with the following replacements. In the variable block they are `NS`, `API_CLIENT`, `DASHBOARD_CLIENT`, `DASHBOARD_HOST`, `OIDC_SECRET`, `ADMIN_ROLE`, `USER_ROLE` and `COOKIE_NAME`; `KEYCLOAK_HOST` and the images stay the same.
-
-| Dashboard A setting | Dashboard B setting |
-|---|---|
-| `namespace-a` | `namespace-b` |
-| `openshell-api-a` | `openshell-api-b` |
-| `openshell-dashboard-a` | `openshell-dashboard-b` |
-| `dashboard-a.example.com` | `dashboard-b.example.com` |
-| `dashboard-a-oidc` | `dashboard-b-oidc` |
-| `administrators-a` | `administrators-b` |
-| `users-a` | `users-b` |
-| `_openshell_a` | `_openshell_b` |
-
-### Step 13: Configure the laptop CLI
-
-The CLI must be a 0.1.x release; a 0.0.x CLI connects but fails on most commands (see Troubleshooting). Because each gateway serves the chart-generated certificate (Step 9), the CLI needs that gateway's CA before it can connect. An administrator extracts each one once and sends the files to users; they are public certificates, not secrets:
+The CLI must be a 0.1.x release; a 0.0.x CLI connects but fails on most commands (see Troubleshooting). Because each gateway serves the certificate its chart generates (Step 8), the CLI needs that gateway's CA before it can connect. An administrator extracts each one once and sends the files to users; they are public certificates, not secrets:
 
 ```shell
 oc -n namespace-a get secret openshell-client-tls -o jsonpath='{.data.ca\.crt}' | base64 -d > gateway-a-ca.crt
@@ -517,7 +391,7 @@ OPENSHELL_NO_BROWSER=1 openshell gateway login namespace-a
 
 Keycloak must advertise `device_authorization_endpoint` and the selected CLI client must have Device Authorization Grant enabled. `openshell status` then reports `Authenticated (OIDC)`.
 
-### Step 14: Add workspace members
+### Step 13: Add workspace members
 
 Being in a Keycloak group is not enough. The gateway role in the token lets a user sign in, but OpenShell applies a second check: a standard user must have a membership record in each workspace they use. Until it exists, the user can sign in, `openshell whoami` works, and every other call fails with `not a member of workspace 'default'; ask a platform admin to run: openshell workspace member add ...`. Keycloak groups do not become workspace memberships on their own ([NVIDIA/OpenShell#4286](https://github.com/NVIDIA/OpenShell/issues/4286)).
 
@@ -541,7 +415,7 @@ The dashboard's workspace **Members** page does the same with the subject and th
 
 [Workspaces and membership](user-auth-workspaces.md) covers named workspaces, delegated workspace administrators, looking subjects up through the Keycloak Admin REST API, offboarding, and automation.
 
-### Step 15: Validate expected and denied access
+### Step 14: Validate expected and denied access
 
 1. Sign in to Dashboard A as Mary. Confirm that the UI loads and reports a standard OpenShell user.
 2. Repeat Dashboard A and Gateway A tests as Cameron. Confirm that Cameron has a distinct subject but the same `users-a` authorization as Mary.
@@ -586,22 +460,22 @@ Inspect tokens only with approved local tooling or Keycloak's Evaluate view. Do 
 |---|---|---|
 | Dashboard login redirects repeatedly | Redirect URI, proxy cookie, issuer, or forwarded-host mismatch | Match the Keycloak redirect exactly and verify reverse-proxy headers |
 | Dashboard login succeeds but API returns 401 | Proxy passed an ID token or the expected API client roles are absent from the access token | Use `--pass-access-token` and verify the matching `resource_access` roles and API audience |
-| Dashboard works, then after a few minutes shows the user signed in with no role and every page fails with `ExpiredSignature` | The proxy is not refreshing the access token | Set `--cookie-refresh` below the realm's access-token lifespan |
-| Signed in, but every call says `not a member of workspace` | The user has the gateway role but no workspace membership | Add the membership ([Step 14](#step-14-add-workspace-members)) |
-| Deleting a sandbox from the dashboard fails with `504 Gateway Time-out` after 30 seconds, yet the sandbox is gone | The delete takes about 30 seconds and the proxy or the Route timed out | Set `--upstream-timeout` and the Route's `haproxy.router.openshift.io/timeout` above 30 s |
-| Signing out of the dashboard signs the same user straight back in | Only the proxy session ended; the Keycloak session is still alive | Set `LOGOUT_URL` to the Keycloak logout as in Step 11, with `--whitelist-domain` and the client's post logout redirect URI |
+| Dashboard works, then after a few minutes shows the user signed in with no role and every page fails with `ExpiredSignature` | The proxy is not refreshing the access token | The installer sets `--cookie-refresh=2m`. If the realm's access tokens live less than that, set the chart's `authProxy.cookie.refresh` below their lifetime |
+| Signed in, but every call says `not a member of workspace` | The user has the gateway role but no workspace membership | Add the membership ([Step 13](#step-13-add-workspace-members)) |
+| Deleting a sandbox from the dashboard fails with `504 Gateway Time-out` after 30 seconds, yet the sandbox is gone | The delete takes about 30 seconds and the proxy or the Route timed out | The installer sets 120 s on the proxy and 300 s on the Route. Check `--upstream-timeout` and the Route's `haproxy.router.openshift.io/timeout` if they were changed |
+| Signing out of the dashboard signs the same user straight back in | Only the proxy session ended; the Keycloak session is still alive. The installer resets this on every run | Apply [Step 11](#step-11-make-sign-out-end-the-keycloak-session) again, and check the client's post logout redirect URI |
 | Dashboard Route answers 503 right after the rollout | The router has not picked up the new endpoint yet | Wait a few seconds; check `oc get endpoints openshell-dashboard` |
 | Gateway reports invalid audience | Audience Resolve did not see a permitted API client role | Verify the `roles` client scope, role scope mappings, `resource_access` entry, and `aud` claim |
 | Authenticated user has no OpenShell role | Group lacks API client-role mapping or role scope mapping filters it | Check group Role mapping, Full Scope Allowed, and `resource_access` claim |
 | Mary or Cameron can open Dashboard B | B proxy lacks allowed-role restriction or B role was granted accidentally | Check proxy flags and remove A groups from B client roles |
 | CLI reports redirect URI mismatch | The public client does not accept the random `127.0.0.1` callback | Register the native loopback pattern and test the exact released CLI |
 | CLI device login is unavailable | Device Authorization Grant or discovery endpoint is disabled | Enable the grant on the CLI client and inspect discovery metadata |
-| CLI: `invalid peer certificate: UnknownIssuer` | The gateway serves the chart-generated certificate and the CLI does not have its CA | Install the gateway CA for that gateway name (Step 13) |
+| CLI: `invalid peer certificate: UnknownIssuer` | The gateway serves the chart-generated certificate and the CLI does not have its CA | Install the gateway CA for that gateway name (Step 12) |
 | CLI: `failed to decode Protobuf message: ...workspace_scope: unexpected end group tag` | The CLI is older than 0.1.0 (`openshell --version`); `whoami` and `status` still work, everything with a workspace fails | Install a 0.1.x CLI |
-| CLI reports `missing authorization header` | The CLI entry uses the mTLS client bundle, which no longer signs anyone in once OIDC is on | Register an OIDC entry with `gateway add --oidc-issuer ...` (Step 13) |
-| Gateway cannot initialize OIDC | Issuer, CA trust, cluster egress, or discovery failure | Check the exact realm issuer, `keycloak-ca` mount, NetworkPolicy, and gateway logs |
-| Browser shows a client certificate error | Gateway still requires user mTLS behind a TLS-terminating ingress | Set `server.tls.enableMtls` false while keeping HTTPS enabled |
-| Dashboard can be bypassed with forged headers | BFF is reachable without oauth2-proxy | Bind BFF to loopback and expose only port 4180 |
+| CLI reports `missing authorization header` | The CLI entry uses the mTLS client bundle, which no longer signs anyone in once OIDC is on | Register an OIDC entry with `gateway add --oidc-issuer ...` (Step 12) |
+| Gateway cannot initialize OIDC | Issuer, CA trust, cluster egress, or discovery failure | Check the exact realm issuer, the `oidc.ca_file` setting, NetworkPolicy, and gateway logs |
+| Browser shows a client certificate error | The gateway requires a client certificate | The installer turns `server.tls.enableMtls` off and keeps HTTPS on. Check the gateway release's values |
+| Dashboard can be bypassed with forged headers | The dashboard is reachable without oauth2-proxy | The installer binds it to the pod's loopback address and exposes only port 4180. Check for an extra Service, Route or changed chart values |
 
 ## Production readiness checklist
 
