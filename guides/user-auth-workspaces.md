@@ -23,7 +23,7 @@ The commands use the CLI gateway names registered in the Keycloak guide, `namesp
 
 Platform Admins can complete workspace setup without asking every user to run a CLI command, provided the provisioning process obtains the exact OIDC subject accepted by the target gateway.
 
-The identity provider decides whether a token contains the configured gateway administrator or user role. OpenShell then applies a second authorization layer: each ordinary user or delegated Workspace Admin must have a membership record in every logical workspace they may use. Identity provider groups do not automatically become OpenShell workspace memberships ([NVIDIA/OpenShell#4286](https://github.com/NVIDIA/OpenShell/issues/4286)). A user who has the role but no membership can sign in, and then every call fails with `not a member of workspace`.
+The identity provider decides whether a token contains the configured gateway administrator or user role. OpenShell then applies a second authorization layer: each ordinary user or delegated Workspace Admin must have a membership record in every logical workspace they may use. Identity provider groups do not automatically become OpenShell workspace memberships ([NVIDIA/OpenShell#4286](https://github.com/NVIDIA/OpenShell/issues/4286)). A user who has the role but no membership can sign in and `whoami` works, but the workspace list comes back empty and every call inside a workspace fails with `not a member of workspace`.
 
 This guide assumes Gateway A is deployed in `namespace-a` and accepts `administrators-a` and `users-a`. Gateway B is deployed in `namespace-b` and accepts `administrators-b` and `users-b`. Mary and Cameron belong to `users-a`. Joe belongs to `users-b`. These users do not need OpenShift login accounts.
 
@@ -202,7 +202,7 @@ openshell --gateway namespace-b --workspace team-b sandbox list
 | Onboard | Resolve the subject through directory lookup, enrollment, or `whoami` fallback and add membership | Assign the gateway user role |
 | Change role | Remove the existing membership and add it again with the new role | Change the gateway role only if platform authority also changes |
 | Move teams | Add the destination membership then remove the source membership after validation | Update group or role assignment when gateway access changes |
-| Offboard | Remove every workspace membership immediately | Remove gateway roles and revoke identity provider sessions as required |
+| Offboard | Remove every workspace membership immediately (a Platform Admin has none to remove) | Remove gateway roles and revoke identity provider sessions as required; for a Platform Admin this is the only step |
 | Delete workspace | Remove contained resources then delete the workspace as Platform Admin | No change unless the related gateway role is also retired |
 
 ```shell
@@ -211,7 +211,9 @@ openshell --gateway namespace-a workspace member remove \
   --subject '<mary-subject>'
 ```
 
-Removing an OpenShell membership affects workspace authorization independently of any access token already issued. Removing only an identity provider role may leave a previously issued token usable until it expires, so remove the OpenShell membership first during urgent workspace access revocation.
+Removing a membership takes effect at once. The gateway checks membership on every call, so a standard user or Workspace Admin whose token is still valid is refused in that workspace from the next call. Remove the membership first when access has to end now.
+
+Platform Admins are different: they need no membership, so there is nothing to remove, and the gateway reads the administrator role from the token, which keeps it until it expires. Removing the user from the administrators group stops Keycloak from issuing new tokens with the role. It does not stop a token that was already issued, and neither does logging out the user's Keycloak sessions, because the gateway checks a token's signature and expiry without asking Keycloak. With Keycloak's default 5-minute access-token lifespan and the gateway's 60-second leeway, an offboarded administrator can keep working for up to 6 minutes. To shorten that window, shorten the access-token lifespan in the realm.
 
 ## Automate membership at scale
 
