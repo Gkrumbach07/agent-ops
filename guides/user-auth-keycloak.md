@@ -4,7 +4,7 @@
 >
 > Run end to end as written on 2026-10-16: OpenShift 4.21.0, the installer at commit `635292b`
 > (`opendatahub-io/openshell` `main`) with gateway chart 0.1.3, the Red Hat build `v0.1.3-rhaiv.3`,
-> dashboard chart 0.1.1 and oauth2-proxy v7.15.2, CLI 0.1.2, upstream Keycloak 26.0 in dev mode, two
+> dashboard chart 0.1.1 with its default image (Step 9 now pins the ODH build instead) and oauth2-proxy v7.15.2, CLI 0.1.2, upstream Keycloak 26.0 in dev mode, two
 > gateways in one realm. Three things were not done the way a person would do them: the realm was
 > configured with `kcadm.sh`, following steps 1 to 6, instead of in the Keycloak console; the
 > browser logins were driven with `curl`; and the CLI signed in as a service account instead of
@@ -245,7 +245,10 @@ Create `$HOME/.config/openshell-rhoai/namespace-a/config.json`. Replace the cont
   "dashboard": {
     "chart": "oci://ghcr.io/gkrumbach07/openshell-dashboard/helm-chart/openshell-dashboard",
     "version": "0.1.1",
-    "host": "dashboard-a.example.com"
+    "host": "dashboard-a.example.com",
+    "images": {
+      "dashboard": {"registry": "quay.io", "repository": "opendatahub/odh-openshell-dashboard", "digest": "sha256:77c7434a172800ce561b2910b4964728f28ada39d77f26d7039be60ed3663ece"}
+    }
   },
   "oidc": {
     "provider": "keycloak-oidc",
@@ -273,7 +276,7 @@ The `oidc` section is where the Keycloak objects from steps 3 to 5 go:
 | `admin_role`, `user_role` | The two client roles from Step 3 | Gateway administrator and standard user |
 | `allowed_roles` | `<API client>:<role>`, one entry per role | The proxy refuses anyone without one of them, before the dashboard is reached |
 
-Without `allowed_roles` every user of the realm reaches the dashboard and only the gateway refuses them. The `images` block selects the Red Hat build; without it the chart's own upstream images are used. If Keycloak uses a private CA, add `"ca_file": "keycloak-ca.crt"` to `oidc` and put the PEM file next to the JSON: the installer gives it to the gateway and to the proxy.
+Without `allowed_roles` every user of the realm reaches the dashboard and only the gateway refuses them. The two `images` blocks select the Red Hat builds; without them the charts' own upstream images are used. The dashboard chart is published only upstream, so `chart` stays there while `images` swaps in the ODH build of the same release, pinned by digest (ODH fork commit `03995be`: dashboard 0.1.1 plus three sign-in fixes). A newer ODH dashboard build needs the dashboard chart release it was built with. If Keycloak uses a private CA, add `"ca_file": "keycloak-ca.crt"` to `oidc` and put the PEM file next to the JSON: the installer gives it to the gateway and to the proxy.
 
 Check the configuration, check the cluster, then install. `--check` renders both charts without contacting the cluster, and `--preflight` checks the cluster without changing it:
 
