@@ -201,13 +201,13 @@ install_helm() {
         --namespace "${NAMESPACE}"
         --set "gateway.image.registry=${GATEWAY_IMAGE_REPOSITORY%%/*}"
         --set "gateway.image.repository=${GATEWAY_IMAGE_REPOSITORY#*/}"
-        --set "gateway.image.tag=${GATEWAY_IMAGE_TAG}"
+        --set-string "gateway.image.tag=${GATEWAY_IMAGE_TAG}"
         --set "supervisor.image.registry=${SUPERVISOR_IMAGE_REPOSITORY%%/*}"
         --set "supervisor.image.repository=${SUPERVISOR_IMAGE_REPOSITORY#*/}"
-        --set "supervisor.image.tag=${SUPERVISOR_IMAGE_TAG}"
+        --set-string "supervisor.image.tag=${SUPERVISOR_IMAGE_TAG}"
         --set "sandboxRuntime.image.registry=${SANDBOX_RUNTIME_IMAGE_REPOSITORY%%/*}"
         --set "sandboxRuntime.image.repository=${SANDBOX_RUNTIME_IMAGE_REPOSITORY#*/}"
-        --set "sandboxRuntime.image.tag=${SANDBOX_RUNTIME_IMAGE_TAG}"
+        --set-string "sandboxRuntime.image.tag=${SANDBOX_RUNTIME_IMAGE_TAG}"
         --set podSecurityContext.fsGroup=null
         --set securityContext.runAsUser=null
         --set server.auth.allowUnauthenticatedUsers=true
