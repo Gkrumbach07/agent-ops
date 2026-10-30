@@ -10,6 +10,10 @@
 > browser logins were driven with `curl`; and the CLI signed in as a service account instead of
 > opening a browser. Only Keycloak has been tested; Microsoft Entra ID has not.
 
+The chart and image versions in Step 9 were also tested on OpenShift 4.21.4:
+CLI and dashboard login, workspace membership, and sandbox creation and deletion
+worked.
+
 This guide describes how to deploy two independent OpenShell gateways and dashboards in an OpenShift cluster while using one externally managed Keycloak realm for authentication. Namespace A accepts `administrators-a` and `users-a`. Namespace B accepts `administrators-b` and `users-b`. Mary and Cameron are standard users in namespace A, and Joe is a standard user in namespace B. End users do not need OpenShift accounts.
 
 | Deployment | Standard users | Accepted API audience | Accepted roles |
@@ -201,9 +205,9 @@ The `sub` value is the user's ID in the Keycloak console; Step 12 uses it.
 
 ### Step 8: Prepare the installer
 
-The gateway and the dashboard are installed by the OpenShell installer for OpenShift, `deploy/rhoai/install.py` in [`opendatahub-io/openshell`](https://github.com/opendatahub-io/openshell). One run installs two Helm releases into one namespace: `openshell` (the gateway) and `openshell-dashboard` (the dashboard behind oauth2-proxy). It creates the namespace when it is missing, a passthrough `Route` for the gateway, an edge `Route` for the dashboard and the dashboard's `NetworkPolicy`. The installer's own README, in the same directory, covers reruns, upgrades and failures.
+The gateway and the dashboard are installed by the OpenShell installer for OpenShift, `deploy/rhoai/install.py` in [`opendatahub-io/openshell`](https://github.com/opendatahub-io/openshell). One run installs two Helm releases into one namespace: `openshell` (the gateway) and `openshell-dashboard` (the dashboard behind oauth2-proxy). It creates the namespace when it is missing, a passthrough `Route` for the gateway, an edge `Route` for the dashboard and the dashboard's `NetworkPolicy`. The [installer README](https://github.com/opendatahub-io/openshell/blob/main/deploy/rhoai/README.md) covers prerequisites, reruns, upgrades and failures. Use this installer with the pinned 0.1.x charts and images in Step 9; the separate Getting Started guide currently installs 0.0.116.
 
-1. On the workstation you need `uv`, Helm, `kubectl`, `jq` and a kubeconfig context with the rights to install both charts. The cluster needs Agent Sandbox and a default StorageClass, as for [installing OpenShell](getting-started-openshell-openshift.md#prerequisites).
+1. On the workstation you need `uv`, Helm, `kubectl`, `jq` and a kubeconfig context with the rights to install both charts. The cluster needs Agent Sandbox and a default StorageClass, as described in the installer README.
 2. Reserve two hostnames per namespace under the router's domain: one for the gateway and one for the dashboard. Nothing needs issuing: the gateway serves a certificate its chart generates, with the gateway hostname in it, and the dashboard `Route` uses the router's default certificate.
 3. The gateway pods and the dashboard proxy pods must reach the Keycloak issuer over HTTPS.
 
@@ -328,8 +332,8 @@ Repeat Step 9 with a second directory, `$HOME/.config/openshell-rhoai/namespace-
 The CLI must be a 0.1.x release; a 0.0.x CLI connects but fails on most commands (see Troubleshooting). Because each gateway serves the certificate its chart generates (Step 8), the CLI needs that gateway's CA before it can connect. An administrator extracts each one once and sends the files to users; they are public certificates, not secrets:
 
 ```shell
-oc -n namespace-a get secret openshell-client-tls -o jsonpath='{.data.ca\.crt}' | base64 -d > gateway-a-ca.crt
-oc -n namespace-b get secret openshell-client-tls -o jsonpath='{.data.ca\.crt}' | base64 -d > gateway-b-ca.crt
+kubectl -n namespace-a get secret openshell-client-tls -o jsonpath='{.data.ca\.crt}' | base64 -d > gateway-a-ca.crt
+kubectl -n namespace-b get secret openshell-client-tls -o jsonpath='{.data.ca\.crt}' | base64 -d > gateway-b-ca.crt
 
 # on the user's machine, one directory per gateway name
 mkdir -p ~/.config/openshell/gateways/namespace-a/mtls ~/.config/openshell/gateways/namespace-b/mtls
@@ -361,11 +365,11 @@ The browser login uses Authorization Code with `S256` PKCE and a random `127.0.0
 OPENSHELL_NO_BROWSER=1 openshell gateway login namespace-a
 ```
 
-Keycloak must advertise `device_authorization_endpoint` and the selected CLI client must have Device Authorization Grant enabled. `openshell status` then reports `Authenticated (OIDC)`.
+Keycloak must advertise `device_authorization_endpoint` and the selected CLI client must have Device Authorization Grant enabled. A platform administrator sees `Authenticated (OIDC)` in `openshell status`. A standard user may see `Authenticated (OIDC; authorization denied)` because the status probe calls the administrator-only `GetGatewayInfo` method. The user is still authenticated; run `openshell --gateway namespace-a whoami --output json` to verify the identity before workspace membership exists.
 
 ### Step 12: Add workspace members
 
-Being in a Keycloak group is not enough. The gateway role in the token lets a user sign in, but OpenShell applies a second check: a standard user must have a membership record in each workspace they use. Until it exists, the user can sign in, `openshell whoami` works, and every other call fails with `not a member of workspace 'default'; ask a platform admin to run: openshell workspace member add ...`. Keycloak groups do not become workspace memberships on their own ([NVIDIA/OpenShell#4286](https://github.com/NVIDIA/OpenShell/issues/4286)).
+Being in a Keycloak group is not enough. The gateway role in the token lets a user sign in, but OpenShell applies a second check: a standard user must have a membership record in each workspace they use. Before membership, `openshell whoami` works and `workspace list` may return no rows. Workspace-scoped calls against an unjoined workspace fail with `not a member of workspace 'default'; ask a platform admin to run: openshell workspace member add ...`. Keycloak groups do not become workspace memberships on their own ([NVIDIA/OpenShell#4286](https://github.com/NVIDIA/OpenShell/issues/4286)).
 
 A member of `administrators-a` adds each standard user, identified by the `sub` claim of their token. With Keycloak's default subject mapping that is the user's ID in the Keycloak console (**Users**, the user, **ID**); `openshell whoami --output json`, run by the user, prints the same value.
 
@@ -433,10 +437,11 @@ Inspect tokens only with approved local tooling or Keycloak's Evaluate view. Do 
 | Dashboard login redirects repeatedly | Redirect URI, proxy cookie, issuer, or forwarded-host mismatch | Match the Keycloak redirect exactly and verify reverse-proxy headers |
 | Dashboard login succeeds but API returns 401 | Proxy passed an ID token or the expected API client roles are absent from the access token | Use `--pass-access-token` and verify the matching `resource_access` roles and API audience |
 | Dashboard works, then after a few minutes shows the user signed in with no role and every page fails with `ExpiredSignature` | The proxy is not refreshing the access token | The installer sets `--cookie-refresh=2m`. If the realm's access tokens live less than that, set the chart's `authProxy.cookie.refresh` below their lifetime |
-| Signed in, but every call says `not a member of workspace` | The user has the gateway role but no workspace membership | Add the membership ([Step 12](#step-12-add-workspace-members)) |
+| A workspace-scoped call says `not a member of workspace` | The user has the gateway role but no membership in that workspace | Add the membership ([Step 12](#step-12-add-workspace-members)) |
+| Standard-user `openshell status` says `Authenticated (OIDC; authorization denied)` | The status probe calls administrator-only `GetGatewayInfo` | Use `openshell whoami --output json` to verify the user's identity |
 | Deleting a sandbox from the dashboard fails with `504 Gateway Time-out` after 30 seconds, yet the sandbox is gone | The delete takes about 30 seconds and the proxy or the Route timed out | The installer sets 120 s on the proxy and 300 s on the Route. Check `--upstream-timeout` and the Route's `haproxy.router.openshift.io/timeout` if they were changed |
 | Signing out of the dashboard signs the same user straight back in | The dashboard chart is older than 0.1.1, which ends only the proxy session | Set `dashboard.version` in the installer configuration to `0.1.1` or later and run the installer again |
-| Dashboard Route answers 503 right after the rollout | The router has not picked up the new endpoint yet | Wait a few seconds; check `oc get endpoints openshell-dashboard` |
+| Dashboard Route answers 503 right after the rollout | The router has not picked up the new endpoint yet | Wait a few seconds; check `kubectl -n <namespace> get endpoints openshell-dashboard` |
 | Gateway reports invalid audience | Audience Resolve did not see a permitted API client role | Verify the `roles` client scope, role scope mappings, `resource_access` entry, and `aud` claim |
 | Authenticated user has no OpenShell role | Group lacks API client-role mapping or role scope mapping filters it | Check group Role mapping, Full Scope Allowed, and `resource_access` claim |
 | Mary or Cameron can open Dashboard B | B proxy lacks allowed-role restriction or B role was granted accidentally | Check proxy flags and remove A groups from B client roles |
